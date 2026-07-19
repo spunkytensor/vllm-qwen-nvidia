@@ -1,0 +1,104 @@
+services:
+  vllm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qwen3.6-nvfp4-vllm-local:latest
+    container_name: qwen3.6-nvfp4-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ipc: host
+    ports:
+      - "${VLLM_BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8000}:8000"
+    environment:
+      MODEL_PRESET: ${MODEL_PRESET:-Qwen3.6-35B-A3B}
+      VLLM_API_KEY: ${VLLM_API_KEY:?Set VLLM_API_KEY in .env}
+      HF_TOKEN: ${HF_TOKEN:-}
+      MAX_MODEL_LEN: ${MAX_MODEL_LEN:-}
+      GPU_MEMORY_UTILIZATION: ${GPU_MEMORY_UTILIZATION:-}
+      MAX_NUM_SEQS: ${MAX_NUM_SEQS:-}
+      MAX_NUM_BATCHED_TOKENS: ${MAX_NUM_BATCHED_TOKENS:-}
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ./vllm-cache:/root/.cache/vllm
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 180
+      start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  open-terminal:
+    image: ghcr.io/open-webui/open-terminal:0.11.34
+    container_name: qwen3.6-open-terminal
+    restart: unless-stopped
+    environment:
+      OPEN_TERMINAL_API_KEY: ${OPEN_TERMINAL_API_KEY:?Set OPEN_TERMINAL_API_KEY in .env}
+      OPEN_TERMINAL_ENABLE_TERMINAL: "true"
+      OPEN_TERMINAL_ENABLE_NOTEBOOKS: "true"
+      OPEN_TERMINAL_FILE_BROWSER_ROOT: home
+      OPEN_TERMINAL_MAX_SESSIONS: ${OPEN_TERMINAL_MAX_SESSIONS:-8}
+      OPEN_TERMINAL_INFO: >-
+        Isolated demonstration workspace. Files persist in /home/user, but the
+        host filesystem and Docker socket are not mounted.
+    volumes:
+      - open-terminal-home:/home/user
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.10.2
+    container_name: qwen3.6-open-webui
+    restart: unless-stopped
+    ports:
+      - "${OPEN_WEBUI_BIND_ADDRESS:-127.0.0.1}:${OPEN_WEBUI_PORT:-3000}:8080"
+    depends_on:
+      vllm:
+        condition: service_healthy
+      open-terminal:
+        condition: service_healthy
+    environment:
+      WEBUI_AUTH: "true"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?Set WEBUI_SECRET_KEY in .env}
+      ENABLE_SIGNUP: "true"
+      DEFAULT_USER_ROLE: pending
+      # Keep operator-supplied provider credentials authoritative on restart.
+      ENABLE_PERSISTENT_CONFIG: "false"
+      ENABLE_OLLAMA_API: "false"
+      ENABLE_OPENAI_API: "true"
+      OPENAI_API_BASE_URL: http://vllm:8000/v1
+      OPENAI_API_KEY: ${VLLM_API_KEY:?Set VLLM_API_KEY in .env}
+      DEFAULT_MODELS: ${MODEL_PRESET:-Qwen3.6-35B-A3B}
+      DEFAULT_PINNED_MODELS: ${MODEL_PRESET:-Qwen3.6-35B-A3B}
+      TASK_MODEL_EXTERNAL: ${MODEL_PRESET:-Qwen3.6-35B-A3B}
+      CUDA_VISIBLE_DEVICES: ""
+      RAG_EMBEDDING_ENGINE: ""
+      RAG_EMBEDDING_MODEL: Qwen/Qwen3-Embedding-0.6B
+      ENABLE_WEB_SEARCH: "true"
+      WEB_SEARCH_ENGINE: tavily
+      TAVILY_API_KEY: ${TAVILY_API_KEY:?Set TAVILY_API_KEY in .env}
+      TERMINAL_SERVER_CONNECTIONS: >-
+        [{"id":"qwen-sandbox","url":"http://open-terminal:8000","key":"${OPEN_TERMINAL_API_KEY:?Set OPEN_TERMINAL_API_KEY in .env}","name":"Qwen Sandbox","auth_type":"bearer","config":{"enable":true,"access_grants":[{"principal_type":"user","principal_id":"*","permission":"read"}]}}]
+    volumes:
+      - open-webui-data:/app/backend/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  open-webui-data:
+  open-terminal-home:
