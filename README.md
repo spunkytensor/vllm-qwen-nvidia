@@ -62,7 +62,7 @@ as configured.
 Clone the repository and create the local configuration:
 
 ```bash
-git clone https://github.com/mattcurf/vllm-qwen-nvidia.git
+git clone https://github.com/spunkytensor/vllm-qwen-nvidia.git
 cd vllm-qwen-nvidia
 cp .env.example .env
 ```
