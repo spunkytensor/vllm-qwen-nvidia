@@ -57,8 +57,22 @@ if ! [[ "$gpu_memory_utilization" =~ ^(0\.[0-9]+|1(\.0+)?)$ ]] \
   exit 2
 fi
 
-if [[ -z "${HF_TOKEN:-}" ]]; then
-  unset HF_TOKEN
+model_cache_dir="$HF_HOME/hub/models--${model_id//\//--}"
+shopt -s nullglob
+cached_configs=("$model_cache_dir"/snapshots/*/config.json)
+shopt -u nullglob
+model_is_cached=0
+for config_path in "${cached_configs[@]}"; do
+  if [[ -r "$config_path" ]]; then
+    model_is_cached=1
+    break
+  fi
+done
+if (( model_is_cached == 0 )); then
+  printf 'Model %s is not present in the read-only host Hugging Face cache at %s.\n' \
+    "$model_id" "$HF_HOME" >&2
+  printf 'Download it on the host first with: ./scripts/download-model.sh\n' >&2
+  exit 3
 fi
 
 printf 'Launching preset=%s model=%s context=%s gpu_memory_utilization=%s max_num_seqs=%s mtp_tokens=%s\n' \

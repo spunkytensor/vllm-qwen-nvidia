@@ -1,0 +1,16 @@
+ARG OPEN_WEBUI_BASE_IMAGE=ghcr.io/open-webui/open-webui:v0.10.2
+FROM ${OPEN_WEBUI_BASE_IMAGE}
+
+USER root
+
+RUN groupadd --gid 10001 openwebui \
+    && useradd --no-log-init --uid 10001 --gid 10001 \
+      --home-dir /app/backend/data/home --no-create-home --shell /usr/sbin/nologin openwebui \
+    && mkdir -p /app/backend/data/home \
+    && chown -R 10001:10001 /app/backend/data /app/backend/open_webui/static
+
+ENV HOME=/app/backend/data/home \
+    XDG_CACHE_HOME=/app/backend/data/cache \
+    XDG_CONFIG_HOME=/app/backend/data/home/.config
+
+USER 10001:10001
