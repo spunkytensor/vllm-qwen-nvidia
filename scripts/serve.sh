@@ -57,6 +57,11 @@ if ! [[ "$gpu_memory_utilization" =~ ^(0\.[0-9]+|1(\.0+)?)$ ]] \
   exit 2
 fi
 
+# The root filesystem is read-only; these live on the tmpfs and so must be
+# recreated on every start. Libraries that expect them to pre-exist would
+# otherwise fail before vLLM prints anything useful.
+mkdir -p "${HF_MODULES_CACHE:-/tmp/hf-modules}" "${XDG_CONFIG_HOME:-/tmp/config}"
+
 model_cache_dir="$HF_HOME/hub/models--${model_id//\//--}"
 shopt -s nullglob
 cached_configs=("$model_cache_dir"/snapshots/*/config.json)

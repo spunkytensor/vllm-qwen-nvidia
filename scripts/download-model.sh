@@ -2,6 +2,13 @@
 
 set -euo pipefail
 
+# .env is read by relative path, so anchor to the checkout regardless of where
+# the caller invoked this script from.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# shellcheck source=scripts/env-preset.sh
+source scripts/env-preset.sh
+
 if command -v hf >/dev/null 2>&1; then
   hf_command=(hf)
 elif command -v uvx >/dev/null 2>&1; then
@@ -11,11 +18,7 @@ else
   exit 2
 fi
 
-preset="${MODEL_PRESET:-}"
-if [[ -z "$preset" && -f .env ]]; then
-  preset="$(sed -n 's/^MODEL_PRESET=//p' .env | tail -n 1)"
-fi
-preset="${preset:-Qwen3.6-35B-A3B}"
+preset="$(resolve_model_preset)"
 
 case "$preset" in
   Qwen3.6-35B-A3B)

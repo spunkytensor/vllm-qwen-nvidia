@@ -20,6 +20,11 @@ ENV HOME=/home/user \
 WORKDIR /home/user
 USER 1000:1000
 
+# The ENTRYPOINT below bypasses the upstream entrypoint and so hardcodes paths
+# the base image is not contractually obliged to keep. Assert them here so a
+# base-image change fails the build instead of crash-looping the container.
+RUN test -x /usr/bin/tini && command -v open-terminal >/dev/null
+
 # Do not use the upstream slim entrypoint: it deliberately starts as root to
 # chown volumes and optionally configure iptables before invoking gosu.
 ENTRYPOINT ["/usr/bin/tini", "--", "open-terminal"]

@@ -7,6 +7,13 @@ if (( $# == 0 )); then
   exit 2
 fi
 
+# docker-compose.yml and .env are read by relative path, so anchor to the
+# checkout regardless of where the caller invoked this script from.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# shellcheck source=scripts/env-preset.sh
+source scripts/env-preset.sh
+
 cache_path="${HF_CACHE_PATH:-${HOME}/.cache/huggingface}"
 if [[ "$cache_path" != /* ]]; then
   printf 'HF_CACHE_PATH must be absolute; got %q.\n' "$cache_path" >&2
@@ -18,7 +25,8 @@ if [[ "$embedding_cache_path" != /* ]]; then
   exit 2
 fi
 
-export VLLM_UID="$(id -u)"
+VLLM_UID="$(id -u)"
+export VLLM_UID
 export HF_CACHE_PATH="$cache_path"
 export EMBEDDING_CACHE_PATH="$embedding_cache_path"
 
@@ -31,11 +39,7 @@ for compose_arg in "$@"; do
 done
 
 if (( requires_models == 1 )); then
-  preset="${MODEL_PRESET:-}"
-  if [[ -z "$preset" && -f .env ]]; then
-    preset="$(sed -n 's/^MODEL_PRESET=//p' .env | tail -n 1)"
-  fi
-  preset="${preset:-Qwen3.6-35B-A3B}"
+  preset="$(resolve_model_preset)"
   case "$preset" in
     Qwen3.6-35B-A3B)
       model_cache_name="models--unsloth--Qwen3.6-35B-A3B-NVFP4"

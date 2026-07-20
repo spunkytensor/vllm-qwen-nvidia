@@ -5,14 +5,19 @@ FROM ${VLLM_BASE_IMAGE}
 # via `docker inspect`. It is only needed for gated/private repos (this checkpoint is
 # public); put it in .env, which docker-compose.yml passes through at run time.
 
+# The root filesystem is read-only at run time. Only /home/vllm/.cache/vllm (the
+# vllm-runtime-cache volume) and /tmp are writable, so every path that a library
+# may write to must live under one of those two. /home/vllm/.cache/huggingface is
+# the read-only host checkpoint mount and must never be a write target.
 ENV HOME=/home/vllm \
     USER=vllm \
     LOGNAME=vllm \
     HF_HOME=/home/vllm/.cache/huggingface \
-    XDG_CACHE_HOME=/home/vllm/.cache \
-    XDG_CONFIG_HOME=/home/vllm/.config \
+    HF_MODULES_CACHE=/tmp/hf-modules \
+    XDG_CACHE_HOME=/home/vllm/.cache/vllm \
+    XDG_CONFIG_HOME=/tmp/config \
     VLLM_CACHE_ROOT=/home/vllm/.cache/vllm \
-    TORCH_HOME=/home/vllm/.cache/torch \
+    TORCH_HOME=/home/vllm/.cache/vllm/torch \
     TORCHINDUCTOR_CACHE_DIR=/home/vllm/.cache/vllm/torchinductor \
     FLASHINFER_WORKSPACE_BASE=/home/vllm/.cache/vllm \
     TRITON_CACHE_DIR=/home/vllm/.cache/vllm/triton \
@@ -42,10 +47,10 @@ COPY --chmod=755 scripts/serve.sh /opt/vllm/serve.sh
 # build-time root operation only.
 RUN mkdir -p \
       /home/vllm/.cache/huggingface \
-      /home/vllm/.cache/torch \
       /home/vllm/.cache/vllm/cuda \
+      /home/vllm/.cache/vllm/torch \
       /home/vllm/.cache/vllm/triton \
-      /home/vllm/.config \
+      /home/vllm/.cache/vllm/torchinductor \
     && chown -R 2000:0 /home/vllm \
     && chmod -R g+rwX /home/vllm
 
