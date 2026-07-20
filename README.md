@@ -62,7 +62,7 @@ as configured.
 Clone the repository and create the local configuration:
 
 ```bash
-git clone https://github.com/mattcurf/vllm-qwen-nvidia.git
+git clone https://github.com/spunkytensor/vllm-qwen-nvidia.git
 cd vllm-qwen-nvidia
 cp .env.example .env
 ```
@@ -76,12 +76,26 @@ openssl rand -hex 32
 openssl rand -hex 32
 ```
 
-Add your `TAVILY_API_KEY`, then start the complete stack:
+Add your `TAVILY_API_KEY`, download the selected generation model and the fixed
+embedding model with the host Hugging Face CLI (installed directly or invoked
+ephemerally through `uvx`), then start the complete stack:
 
 ```bash
-docker compose up -d --build
-docker compose logs -f vllm open-terminal open-webui
+./scripts/download-model.sh
+./scripts/compose.sh up -d --build
+./scripts/compose.sh logs -f vllm open-terminal open-webui
 ```
+
+The stack never downloads model assets. `download-model.sh` reads
+`MODEL_PRESET` from the environment or `.env`, defaults to
+`Qwen3.6-35B-A3B`, and stores the generation checkpoint in
+`${HF_CACHE_PATH:-$HOME/.cache/huggingface}`. It also provisions
+`Qwen/Qwen3-Embedding-0.6B` in
+`${EMBEDDING_CACHE_PATH:-$HOME/.cache/open-webui/embedding}`. Set `HF_TOKEN` in
+the host shell when the Hugging Face CLI needs one; the token is not passed into
+either service. The Compose wrapper detects the invoking host UID, verifies
+both checkpoints, and mounts both caches read-only. vLLM and Open WebUI run in
+Hugging Face offline mode and fail instead of downloading missing files.
 
 Model initialization can take several minutes. Open WebUI waits for vLLM and
 Open Terminal to become healthy, then becomes available at
@@ -105,12 +119,14 @@ The top-level `.env` is the operator interface. These are the primary settings:
 | `OPEN_WEBUI_PORT` | `3000` | Publish Open WebUI on this host port. |
 | `VLLM_BIND_ADDRESS` | `127.0.0.1` | Host address on which to publish vLLM. |
 | `OPEN_WEBUI_BIND_ADDRESS` | `127.0.0.1` | Host address on which to publish Open WebUI. |
+| `VLLM_SHM_SIZE` | `8gb` | Size of vLLM's private shared-memory filesystem. |
 | `VLLM_API_KEY` | none | Authenticate vLLM clients; also configured in Open WebUI. |
 | `WEBUI_SECRET_KEY` | none | Sign Open WebUI sessions; replace the example value. |
 | `OPEN_TERMINAL_API_KEY` | none | Authenticate Open WebUI to Open Terminal; replace the example value. |
 | `TAVILY_API_KEY` | none | Enable Tavily-backed web search. |
 | `OPEN_TERMINAL_MAX_SESSIONS` | `8` | Limit simultaneous sessions in the shared sandbox. |
-| `HF_TOKEN` | none | Optional Hugging Face credential passed only at runtime. |
+| `HF_CACHE_PATH` | `$HOME/.cache/huggingface` | Host cache populated before the stack starts and mounted read-only into vLLM. |
+| `EMBEDDING_CACHE_PATH` | `$HOME/.cache/open-webui/embedding` | Host cache containing the externally downloaded Qwen embedding model. |
 
 Safe vLLM experiment overrides are also available: `MAX_MODEL_LEN`,
 `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, and `MAX_NUM_BATCHED_TOKENS`. Invalid
@@ -122,7 +138,8 @@ The accepted presets are exactly `Qwen3.6-35B-A3B` and `Qwen3.6-27B`. Change
 `MODEL_PRESET` in `.env`, then recreate vLLM:
 
 ```bash
-docker compose up -d --force-recreate vllm
+./scripts/download-model.sh
+./scripts/compose.sh up -d --force-recreate vllm
 ```
 
 Open WebUI discovers the replacement through vLLM's `/v1/models` endpoint.
@@ -156,7 +173,10 @@ feature usage and administration, refer to:
 
 The terminal uses one persistent Docker volume shared by approved users. It is
 appropriate for demonstrations with trusted participants, not anonymous public
-access or strong per-user isolation.
+access or strong per-user isolation. Its image is based on Open Terminal's slim
+variant and includes Python, Node.js, npm, Git, curl, and jq. Packages must be
+added when building the image; the running terminal has no `sudo`, runtime
+system-package installation, Docker socket, or Linux-account provisioning.
 
 ## Model and runtime defaults
 
@@ -239,14 +259,50 @@ per-user terminal containers, or a hardened public ingress.
 
 Compose preserves:
 
-- `${HOME}/.cache/huggingface` for the downloaded generation checkpoints.
-- `./vllm-cache` for vLLM compilation and autotuning artifacts.
-- `open-webui-data` for users, chats, settings, knowledge, vectors, and the CPU
-  embedding model cache.
+- `${HF_CACHE_PATH:-$HOME/.cache/huggingface}` for generation checkpoints
+  downloaded and owned by the host user; vLLM mounts it read-only.
+- `${EMBEDDING_CACHE_PATH:-$HOME/.cache/open-webui/embedding}` for the Qwen
+  embedding checkpoint downloaded and owned by the host user; Open WebUI mounts
+  it read-only.
+- `vllm-runtime-cache` for vLLM compilation and autotuning artifacts.
+- `open-webui-data` for users, chats, settings, knowledge, and vectors.
+- `open-webui-static` for Open WebUI's generated branding and manifest assets.
 - `open-terminal-home` for the isolated coding workspace.
 
-The vLLM container runs as root. Files it creates in the host Hugging Face cache
-may need their ownership restored before non-container use.
+Every service runs as a fixed non-root identity, with all Linux capabilities
+dropped, privilege escalation disabled, and a read-only root filesystem. Only
+the named data/cache volumes and ephemeral `/tmp` filesystems are writable.
+The Docker daemon remains the normal system (rootful) daemon; Docker Rootless
+mode is not required or configured by this project.
+
+### Migrating an existing installation
+
+Back up the Open WebUI and Open Terminal volumes before changing their
+permissions. Stop the old stack, then use a one-time root maintenance container
+to update existing volume ownership to the fixed runtime identities:
+
+```bash
+./scripts/compose.sh down
+docker run --rm -u 0 -v vllm-qwen-nvidia_open-webui-data:/data \
+  alpine:3.22 chown -R 10001:10001 /data
+docker run --rm -u 0 -v vllm-qwen-nvidia_open-terminal-home:/data \
+  alpine:3.22 chown -R 1000:1000 /data
+```
+
+Compose prefixes volume names with the project name, normally the checkout
+directory name shown above. Confirm the actual names with `docker volume ls`
+before running either command. This is an offline migration exception; no
+normal service startup uses UID 0.
+
+The existing host Hugging Face cache is used directly and does not need to be
+copied or migrated. If it lives somewhere other than
+`$HOME/.cache/huggingface`, set the absolute `HF_CACHE_PATH` in the environment
+before running either helper script. Embedding files previously downloaded into
+`open-webui-data` are not reused because that volume mixes models with mutable
+application data; run `download-model.sh` once to create the dedicated host
+embedding cache. The old `./vllm-cache` is no longer mounted and can be retained
+for rollback; vLLM safely rebuilds those runtime artifacts in
+`vllm-runtime-cache`.
 
 Back up the Open WebUI volume before changing its pinned version because
 upstream releases may perform database migrations. Removing either named volume
@@ -257,12 +313,12 @@ permanently deletes the corresponding application data.
 Inspect service state and health first:
 
 ```bash
-docker compose ps
-docker compose logs --tail=200 vllm open-terminal open-webui
+./scripts/compose.sh ps
+./scripts/compose.sh logs --tail=200 vllm open-terminal open-webui
 ```
 
 If Open WebUI remains in `Created`, vLLM is probably still loading its model or
-has failed its health check. Follow `docker compose logs -f vllm` and look for
+has failed its health check. Follow `./scripts/compose.sh logs -f vllm` and look for
 the final API startup message.
 
 A maximum-sequence-length error means the configured context does not fit the
@@ -279,8 +335,8 @@ recreate Open WebUI. If the terminal is unavailable, verify that the API key in
 Open WebUI and Open Terminal came from the same `OPEN_TERMINAL_API_KEY` value:
 
 ```bash
-docker compose up -d --force-recreate open-terminal open-webui
-docker compose exec open-webui curl -fsS http://open-terminal:8000/health
+./scripts/compose.sh up -d --force-recreate open-terminal open-webui
+./scripts/compose.sh exec open-webui curl -fsS http://open-terminal:8000/health
 ```
 
 ## Testing
@@ -292,17 +348,27 @@ Test the stack in layers so failures remain easy to locate.
 ```bash
 bash -n scripts/serve.sh
 jq empty opencode/opencode.json
-docker compose config --quiet
+./scripts/compose.sh config --quiet
 git diff --check
 ```
 
 Run the Compose check once with each supported `MODEL_PRESET`.
 
+Builds perform package installation as root, but each final image declares a
+non-root `USER`. Verify both the image metadata and the rendered Compose users:
+
+```bash
+docker image inspect qwen3.6-nvfp4-vllm-local:latest \
+  qwen3.6-open-terminal-local:0.11.34 qwen3.6-open-webui-local:v0.10.2 \
+  --format '{{.RepoTags}} user={{.Config.User}}'
+./scripts/compose.sh config | grep -A1 'user:'
+```
+
 ### Layer 2 — service health
 
 ```bash
-docker compose up -d --build
-docker compose ps
+./scripts/compose.sh up -d --build
+./scripts/compose.sh ps
 curl -fsS http://localhost:8000/health
 curl -fsS http://localhost:3000/ready
 curl -s -H "Authorization: Bearer $VLLM_API_KEY" \
@@ -313,6 +379,16 @@ All three services should become healthy. Open Terminal should have no published
 host port, and `nvidia-smi` should show vLLM but not the Open WebUI embedding
 process.
 
+Confirm the runtime security boundary for each service:
+
+```bash
+for service in vllm open-terminal open-webui; do
+  ./scripts/compose.sh exec "$service" sh -c \
+    'test "$(id -u)" -ne 0 && grep -E "^(CapEff|CapPrm):[[:space:]]+0+$|^NoNewPrivs:[[:space:]]+1$" /proc/1/status'
+  ! ./scripts/compose.sh exec "$service" sh -c 'touch /non-root-write-test'
+done
+```
+
 ### Layer 3 — integration smoke tests
 
 Use the Open WebUI interface to confirm one example of each configured path:
@@ -322,6 +398,8 @@ Use the Open WebUI interface to confirm one example of each configured path:
 - Upload a small document and retrieve a fact that exists only in that file.
 - Activate `Qwen Sandbox`, create a file, and execute short Python, Node.js, and
   Git commands.
+- Confirm `sudo` is unavailable and writes outside `/home/user` and `/tmp` fail
+  in `Qwen Sandbox`.
 
 Restart the stack and verify that the conversation, uploaded knowledge, and
 terminal file remain available.

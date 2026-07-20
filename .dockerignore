@@ -1,0 +1,8 @@
+.env
+.git
+.gitignore
+hf-cache
+vllm-cache
+opencode
+*.md
+LICENSE

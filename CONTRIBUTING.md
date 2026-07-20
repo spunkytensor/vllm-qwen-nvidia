@@ -21,7 +21,7 @@ Before opening an issue:
    - GPU model and driver version (`nvidia-smi` header is fine)
    - Docker / Compose version
    - Exact `.env` overrides you used (redact tokens)
-   - Relevant container logs (`docker compose logs vllm`)
+   - Relevant container logs (`./scripts/compose.sh logs vllm`)
    - The `vllm serve` command line printed at startup
 
 For suspected vLLM bugs, please also report upstream at
@@ -38,9 +38,9 @@ not specific to this wrapper.
 4. Verify the container still builds and starts:
 
    ```bash
-   docker compose build
-   docker compose up -d
-   docker compose logs -f vllm
+   ./scripts/compose.sh build
+   ./scripts/compose.sh up -d
+   ./scripts/compose.sh logs -f vllm
    ```
 
 5. Open a pull request describing what changed and why. Link any relevant

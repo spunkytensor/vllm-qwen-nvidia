@@ -1,0 +1,31 @@
+ARG OPEN_TERMINAL_BASE_IMAGE=ghcr.io/open-webui/open-terminal:0.11.34-slim
+FROM ${OPEN_TERMINAL_BASE_IMAGE}
+
+USER root
+
+# The slim upstream image intentionally has no sudo. Add the tools exercised by
+# this stack at build time instead of allowing package installation at runtime.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nodejs npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /home/user/.cache /home/user/.config /home/user/.local/state/open-terminal \
+    && chown -R 1000:1000 /home/user
+
+ENV HOME=/home/user \
+    XDG_CACHE_HOME=/home/user/.cache \
+    XDG_CONFIG_HOME=/home/user/.config \
+    XDG_STATE_HOME=/home/user/.local/state \
+    OPEN_TERMINAL_LOG_DIR=/home/user/.local/state/open-terminal
+
+WORKDIR /home/user
+USER 1000:1000
+
+# The ENTRYPOINT below bypasses the upstream entrypoint and so hardcodes paths
+# the base image is not contractually obliged to keep. Assert them here so a
+# base-image change fails the build instead of crash-looping the container.
+RUN test -x /usr/bin/tini && command -v open-terminal >/dev/null
+
+# Do not use the upstream slim entrypoint: it deliberately starts as root to
+# chown volumes and optionally configure iptables before invoking gosu.
+ENTRYPOINT ["/usr/bin/tini", "--", "open-terminal"]
+CMD ["run"]
