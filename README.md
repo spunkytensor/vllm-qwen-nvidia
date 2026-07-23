@@ -1,5 +1,7 @@
 # Qwen3.6 NVFP4 vLLM Stack
 
+![Qwen3.6 NVFP4 vLLM Stack logo](logo.jpg)
+
 This repository runs either of two Unsloth NVFP4 Qwen3.6 checkpoints on one
 NVIDIA GPU and exposes them through vLLM's OpenAI-compatible API. The default
 Docker Compose stack also provides an authenticated Open WebUI, Tavily web
