@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# This repository has no local daemon to repair after an orb wakes. The
+# GPU-backed Docker Compose stack is intentionally managed only on a compatible
+# NVIDIA host and must not be started automatically in Amp's cloud sandbox.
+printf 'Orb resumed; no repository services need restarting.\n'

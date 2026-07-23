@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+packages=()
+command -v curl >/dev/null 2>&1 || packages+=(curl ca-certificates)
+command -v docker >/dev/null 2>&1 || packages+=(docker.io)
+command -v jq >/dev/null 2>&1 || packages+=(jq)
+command -v shellcheck >/dev/null 2>&1 || packages+=(shellcheck)
+
+if (( ${#packages[@]} > 0 )); then
+  printf 'Installing orb development packages: %s\n' "${packages[*]}"
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
+else
+  printf 'Orb development packages are already installed.\n'
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  compose_version="v2.33.1"
+  case "$(uname -m)" in
+    x86_64) compose_arch="x86_64" ;;
+    aarch64|arm64) compose_arch="aarch64" ;;
+    *)
+      printf 'Unsupported architecture for Docker Compose: %s\n' "$(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+
+  compose_name="docker-compose-linux-${compose_arch}"
+  compose_base_url="https://github.com/docker/compose/releases/download/${compose_version}"
+  plugin_dir="${HOME}/.docker/cli-plugins"
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' EXIT
+
+  printf 'Installing Docker Compose %s for %s.\n' "$compose_version" "$compose_arch"
+  curl -fsSL "${compose_base_url}/${compose_name}" -o "${tmp_dir}/docker-compose"
+  curl -fsSL "${compose_base_url}/checksums.txt" -o "${tmp_dir}/checksums.txt"
+  expected_checksum="$(awk -v name="*$compose_name" '$2 == name { print $1 }' "${tmp_dir}/checksums.txt")"
+  if [[ -z "$expected_checksum" ]]; then
+    printf 'No checksum found for %s.\n' "$compose_name" >&2
+    exit 1
+  fi
+  printf '%s  %s\n' "$expected_checksum" "${tmp_dir}/docker-compose" | sha256sum --check --status
+  mkdir -p "$plugin_dir"
+  install -m 0755 "${tmp_dir}/docker-compose" "${plugin_dir}/docker-compose"
+fi
+
+printf 'Validating repository configuration.\n'
+bash -n scripts/*.sh
+shellcheck --shell=bash --exclude=SC2016 .agents/setup .agents/resume scripts/*.sh
+jq empty opencode/opencode.json
+for preset in Qwen3.6-35B-A3B Qwen3.6-27B; do
+  MODEL_PRESET="$preset" \
+    VLLM_API_KEY=orb-validation-only \
+    WEBUI_SECRET_KEY=orb-validation-only \
+    OPEN_TERMINAL_API_KEY=orb-validation-only \
+    TAVILY_API_KEY=orb-validation-only \
+    ./scripts/compose.sh config --quiet
+done
+
+printf 'Orb setup complete. GPU-backed services require a compatible NVIDIA host and model caches.\n'
