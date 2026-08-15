@@ -21,8 +21,8 @@ case "$MODEL_PRESET" in
     ;;
   "$PRESET_27B")
     model_id="unsloth/Qwen3.6-27B-NVFP4"
-    preset_max_model_len="102400"
-    preset_gpu_memory_utilization="0.90"
+    preset_max_model_len="130000"
+    preset_gpu_memory_utilization="0.93"
     preset_mtp_tokens="2"
     ;;
   *)

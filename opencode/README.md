@@ -5,7 +5,7 @@ The included standalone configuration defines both supported API identities:
 | Model | Context | Output limit |
 |---|---:|---:|
 | `Qwen3.6-35B-A3B` | 185,000 | 8,192 |
-| `Qwen3.6-27B` | 102,400 | 8,192 |
+| `Qwen3.6-27B` | 130,000 | 8,192 |
 
 ## Setup
 

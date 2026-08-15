@@ -34,7 +34,7 @@
         "Qwen3.6-27B": {
           "name": "Qwen3.6 27B Dense Unsloth NVFP4",
           "reasoning": false,
-          "limit": { "context": 102400, "output": 8192 },
+          "limit": { "context": 130000, "output": 8192 },
           "options": {
             "chat_template_kwargs": { "enable_thinking": false }
           },

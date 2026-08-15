@@ -183,7 +183,7 @@ system-package installation, Docker socket, or Linux-account provisioning.
 | Preset | Checkpoint | Context | Sequences | GPU utilization | MTP |
 |---|---|---:|---:|---:|---:|
 | `Qwen3.6-35B-A3B` | `unsloth/Qwen3.6-35B-A3B-NVFP4` | 185,000 | 1 | 0.93 | 2 |
-| `Qwen3.6-27B` | `unsloth/Qwen3.6-27B-NVFP4` | 102,400 | 1 | 0.90 | 2 |
+| `Qwen3.6-27B` | `unsloth/Qwen3.6-27B-NVFP4` | 130,000 | 1 | 0.93 | 2 |
 
 ### Why the Unsloth checkpoints
 
@@ -228,10 +228,10 @@ prioritizes speculative decoding.
 The 27B preset was measured with the same pinned stack, FP8 KV, MTP=2, and one
 sequence:
 
-- `--max-model-len 103424` initialized successfully.
-- vLLM reported a GPU KV-cache capacity of 106,219 tokens.
-- The preset uses 102,400, leaving 1,024 tokens below the verified startup
-  point and 3,819 below the reported allocator capacity.
+- `--max-model-len 130000` at `--gpu-memory-utilization 0.93` completed startup,
+  warmup, health checks, and inference successfully.
+- vLLM reported a GPU KV-cache capacity of 134,285 tokens.
+- The preset uses 130,000, leaving 4,285 tokens below the measured capacity.
 
 Hybrid attention makes capacity nonlinear. Treat these results as specific to
 the exact driver, GPU, vLLM version, and flags; recheck the `GPU KV cache size`
