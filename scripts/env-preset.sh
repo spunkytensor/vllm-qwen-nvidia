@@ -6,7 +6,7 @@
 # single or double quotes, an inline `#` comment on unquoted values, and
 # surrounding whitespace. The last assignment wins, matching .env semantics.
 
-readonly DEFAULT_MODEL_PRESET="Qwen3.6-35B-A3B"
+readonly DEFAULT_MODEL_PRESET="Qwen3.8-27B"
 
 resolve_model_preset() {
   local preset="${MODEL_PRESET:-}"

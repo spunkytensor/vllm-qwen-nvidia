@@ -30,6 +30,20 @@ export VLLM_UID
 export HF_CACHE_PATH="$cache_path"
 export EMBEDDING_CACHE_PATH="$embedding_cache_path"
 
+tokenizer_fix_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/vllm-qwen-nvidia"
+if [[ "$tokenizer_fix_dir" != /* ]]; then
+  printf 'The tokenizer overlay cache path must be absolute; got %q.\n' "$tokenizer_fix_dir" >&2
+  exit 2
+fi
+
+# The current Unsloth checkpoint compiles a 2,048-token truncation limit into
+# tokenizer.json. Compose overlays a corrected copy without modifying the
+# Hugging Face snapshot. Placeholder values keep non-starting Compose commands
+# renderable before the checkpoint has been downloaded.
+VLLM_TOKENIZER_FIX_PATH="$tokenizer_fix_dir/tokenizer-not-downloaded.json"
+VLLM_TOKENIZER_TARGET="/home/vllm/.cache/huggingface/tokenizer-not-downloaded.json"
+export VLLM_TOKENIZER_FIX_PATH VLLM_TOKENIZER_TARGET
+
 requires_models=0
 for compose_arg in "$@"; do
   if [[ "$compose_arg" == up || "$compose_arg" == start ]]; then
@@ -41,26 +55,35 @@ done
 if (( requires_models == 1 )); then
   preset="$(resolve_model_preset)"
   case "$preset" in
-    Qwen3.6-35B-A3B)
-      model_cache_name="models--unsloth--Qwen3.6-35B-A3B-NVFP4"
-      ;;
-    Qwen3.6-27B)
-      model_cache_name="models--unsloth--Qwen3.6-27B-NVFP4"
+    Qwen3.8-27B)
+      model_cache_name="models--unsloth--Qwen3.8-27B-NVFP4"
       ;;
     *)
-      printf 'Unsupported MODEL_PRESET=%q. Choose Qwen3.6-35B-A3B or Qwen3.6-27B.\n' "$preset" >&2
+      printf 'Unsupported MODEL_PRESET=%q. Choose Qwen3.8-27B.\n' "$preset" >&2
       exit 2
       ;;
   esac
 
+  model_cache_dir="$cache_path/hub/$model_cache_name"
   shopt -s nullglob
-  generation_configs=("$cache_path/hub/$model_cache_name"/snapshots/*/config.json)
+  generation_configs=()
+  if [[ -r "$model_cache_dir/refs/main" ]]; then
+    model_revision="$(<"$model_cache_dir/refs/main")"
+    generation_configs+=("$model_cache_dir/snapshots/$model_revision/config.json")
+  else
+    generation_configs=("$model_cache_dir"/snapshots/*/config.json)
+  fi
   embedding_configs=("$embedding_cache_path/models--Qwen--Qwen3-Embedding-0.6B"/snapshots/*/config.json)
   shopt -u nullglob
 
   generation_ready=0
+  generation_snapshot=""
   for config_path in "${generation_configs[@]}"; do
-    [[ -r "$config_path" ]] && generation_ready=1 && break
+    if [[ -r "$config_path" ]]; then
+      generation_ready=1
+      generation_snapshot="${config_path%/config.json}"
+      break
+    fi
   done
   embedding_ready=0
   for config_path in "${embedding_configs[@]}"; do
@@ -73,6 +96,32 @@ if (( requires_models == 1 )); then
     printf 'Provision all required models first with: ./scripts/download-model.sh\n' >&2
     exit 3
   fi
+
+  tokenizer_path="$generation_snapshot/tokenizer.json"
+  if [[ ! -r "$tokenizer_path" ]]; then
+    printf 'Missing tokenizer.json for %s in %s.\n' "$preset" "$generation_snapshot" >&2
+    exit 3
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    printf 'jq is required to prepare the Qwen3.8 tokenizer workaround.\n' >&2
+    exit 2
+  fi
+
+  tokenizer_fix_path="$tokenizer_fix_dir/${generation_snapshot##*/}-tokenizer.json"
+  tokenizer_fix_tmp="$tokenizer_fix_path.tmp.$$"
+  mkdir -p "$tokenizer_fix_dir"
+  if ! jq '.truncation = null' "$tokenizer_path" > "$tokenizer_fix_tmp"; then
+    rm -f "$tokenizer_fix_tmp"
+    printf 'Could not prepare corrected tokenizer from %s.\n' "$tokenizer_path" >&2
+    exit 3
+  fi
+  chmod 0444 "$tokenizer_fix_tmp"
+  mv -f "$tokenizer_fix_tmp" "$tokenizer_fix_path"
+
+  snapshot_relative_path="${generation_snapshot#"$cache_path"/}"
+  VLLM_TOKENIZER_FIX_PATH="$tokenizer_fix_path"
+  VLLM_TOKENIZER_TARGET="/home/vllm/.cache/huggingface/$snapshot_relative_path/tokenizer.json"
+  export VLLM_TOKENIZER_FIX_PATH VLLM_TOKENIZER_TARGET
 fi
 
 exec docker compose "$@"

@@ -1,13 +1,13 @@
-# Qwen3.6 NVFP4 vLLM Stack
+# Qwen3.8 NVFP4 vLLM Stack
 
-This repository runs either of two Unsloth NVFP4 Qwen3.6 checkpoints on one
-NVIDIA GPU and exposes them through vLLM's OpenAI-compatible API. The default
+This repository runs Unsloth's NVFP4 Qwen3.8-27B checkpoint on one NVIDIA GPU
+and exposes it through vLLM's OpenAI-compatible API. The default
 Docker Compose stack also provides an authenticated Open WebUI, Tavily web
 search, CPU-based Qwen embeddings for RAG, and an isolated Open Terminal coding
 workspace.
 
-This project is tuned and measured on one NVIDIA RTX 5090 with 32 GB of
-VRAM. It has no SLA or warranty. The wrapper is open source under the
+This project targets one NVIDIA RTX 5090 with 32 GB of VRAM. It has no SLA or
+warranty. The wrapper is open source under the
 [Apache License 2.0](LICENSE); contributions are welcome through the workflow in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -18,7 +18,7 @@ flowchart LR
     browser["Browser<br/>Open WebUI :3000"] --> webui["Open WebUI<br/>chat + tools + knowledge"]
     client["OpenAI client / OpenCode"] --> api["vLLM API :8000"]
     webui -->|"OpenAI-compatible API"| api
-    api --> model["Qwen3.6 NVFP4<br/>RTX 5090"]
+    api --> model["Qwen3.8-27B NVFP4<br/>RTX 5090"]
 
     webui -->|"web search"| tavily["Tavily API"]
     webui -->|"local embeddings"| embed["Qwen3-Embedding-0.6B<br/>CPU"]
@@ -37,6 +37,7 @@ grant access only to trusted users.
   for Blackwell.
 - Docker Engine with the Compose plugin.
 - NVIDIA Container Toolkit configured for Docker.
+- `jq` on the host for the tokenizer workaround and configuration checks.
 - Enough disk for the selected checkpoint, the approximately 1.2 GB embedding
   model, the Open Terminal image, and persistent caches.
 - A Tavily API key for web search.
@@ -52,10 +53,11 @@ docker run --rm --runtime nvidia --gpus all \
 
 ## Supported platform
 
-The measured settings and smoke tests target Linux x86_64, Docker Compose, and
-one RTX 5090. Other recent NVIDIA GPUs may work, but context capacity and memory
-settings must be measured again. macOS and Windows cannot run this CUDA stack
-as configured.
+The settings and smoke tests target Linux x86_64, Docker Compose, and one RTX
+5090. Other Blackwell NVIDIA GPUs may work, but context capacity and memory
+settings must be measured for the target system. NVFP4 requires a Blackwell GPU;
+macOS, Windows, and older NVIDIA architectures cannot run this stack as
+configured.
 
 ## Install
 
@@ -88,7 +90,7 @@ ephemerally through `uvx`), then start the complete stack:
 
 The stack never downloads model assets. `download-model.sh` reads
 `MODEL_PRESET` from the environment or `.env`, defaults to
-`Qwen3.6-35B-A3B`, and stores the generation checkpoint in
+`Qwen3.8-27B`, and stores the generation checkpoint in
 `${HF_CACHE_PATH:-$HOME/.cache/huggingface}`. It also provisions
 `Qwen/Qwen3-Embedding-0.6B` in
 `${EMBEDDING_CACHE_PATH:-$HOME/.cache/open-webui/embedding}`. Set `HF_TOKEN` in
@@ -96,6 +98,15 @@ the host shell when the Hugging Face CLI needs one; the token is not passed into
 either service. The Compose wrapper detects the invoking host UID, verifies
 both checkpoints, and mounts both caches read-only. vLLM and Open WebUI run in
 Hugging Face offline mode and fail instead of downloading missing files.
+
+The current Unsloth checkpoint has a packaging bug in `tokenizer.json` that
+silently truncates text prompts at 2,048 tokens and can make larger images fail
+with an image-token mismatch. On every `up` or `start`, the Compose wrapper uses
+`jq` to write a corrected copy with only `truncation` changed to `null`, then
+overlay-mounts that file onto the read-only snapshot. It does not modify the
+Hugging Face cache or substitute Qwen's tokenizer, whose other fields differ.
+See the [DGX Spark investigation](https://forums.developer.nvidia.com/t/qwen3-8-27b-nvfp4-on-a-single-dgx-spark-up-to-1m-context-a-tokenizer-bug-worth-knowing-about-and-measurements/380244)
+for the failure analysis and validation measurements.
 
 Model initialization can take several minutes. Open WebUI waits for vLLM and
 Open Terminal to become healthy, then becomes available at
@@ -114,7 +125,7 @@ The top-level `.env` is the operator interface. These are the primary settings:
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `MODEL_PRESET` | `Qwen3.6-35B-A3B` | Select the complete validated vLLM profile. |
+| `MODEL_PRESET` | `Qwen3.8-27B` | Select the supported vLLM profile. |
 | `HOST_PORT` | `8000` | Publish the vLLM API on this host port. |
 | `OPEN_WEBUI_PORT` | `3000` | Publish Open WebUI on this host port. |
 | `VLLM_BIND_ADDRESS` | `127.0.0.1` | Host address on which to publish vLLM. |
@@ -132,17 +143,17 @@ Safe vLLM experiment overrides are also available: `MAX_MODEL_LEN`,
 `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, and `MAX_NUM_BATCHED_TOKENS`. Invalid
 numeric values fail before vLLM starts.
 
-### Model switching
+### Model selection
 
-The accepted presets are exactly `Qwen3.6-35B-A3B` and `Qwen3.6-27B`. Change
-`MODEL_PRESET` in `.env`, then recreate vLLM:
+The supported preset is `Qwen3.8-27B`. After upgrading an existing checkout,
+change `MODEL_PRESET` in `.env`, download the checkpoint, and recreate vLLM:
 
 ```bash
 ./scripts/download-model.sh
 ./scripts/compose.sh up -d --force-recreate vllm
 ```
 
-Open WebUI discovers the replacement through vLLM's `/v1/models` endpoint.
+Open WebUI discovers the model through vLLM's `/v1/models` endpoint.
 Compose keeps its environment-provided backend URL, credential, and model
 defaults authoritative, so recreating the services also updates Open WebUI's
 provider configuration. No Open WebUI image rebuild or database rewrite is
@@ -182,23 +193,19 @@ system-package installation, Docker socket, or Linux-account provisioning.
 
 | Preset | Checkpoint | Context | Sequences | GPU utilization | MTP |
 |---|---|---:|---:|---:|---:|
-| `Qwen3.6-35B-A3B` | `unsloth/Qwen3.6-35B-A3B-NVFP4` | 185,000 | 1 | 0.93 | 2 |
-| `Qwen3.6-27B` | `unsloth/Qwen3.6-27B-NVFP4` | 130,000 | 1 | 0.93 | 2 |
+| `Qwen3.8-27B` | `unsloth/Qwen3.8-27B-NVFP4` | 130,000 | 1 | 0.93 | 2 |
 
-### Why the Unsloth checkpoints
+### Why the Unsloth checkpoint
 
-Both distributions quantize the same Qwen base models; the choice here is about
-deployment format and kernels. The Unsloth checkpoints use the
-`compressed-tensors` NVFP4 layout that follows vLLM's native CuTe DSL, CUTLASS,
-and FlashInfer paths on this RTX 5090 stack. By contrast, NVIDIA's checkpoints
-use ModelOpt packaging and document ModelOpt/Marlin-oriented serving paths.
-Unsloth's published comparison reports similar accuracy with higher throughput,
-so these presets use its weights while retaining NVIDIA's checkpoints as valid
-alternatives. See the [Unsloth model card](https://huggingface.co/unsloth/Qwen3.6-27B-NVFP4)
-and [NVIDIA model card](https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4)
-for their respective recipes and benchmarks.
+The choice here is about deployment format and kernels. The Unsloth checkpoint
+uses the `compressed-tensors` NVFP4 layout that follows vLLM's native CuTe DSL,
+CUTLASS, and FlashInfer paths on this RTX 5090 stack. Unsloth reports
+approximately 1.5× the throughput of BF16 while retaining 92–97% top-1 agreement
+in its published tests. See the [Qwen3.8 guide](https://unsloth.ai/docs/models/qwen3.8) and
+[Unsloth model card](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) for the
+serving recipe, requirements, and benchmarks.
 
-Both presets use vLLM 0.25.1, FP8 KV cache, chunked prefill, two-token MTP
+The preset uses vLLM 0.25.1, FP8 KV cache, chunked prefill, two-token MTP
 speculation, Qwen reasoning and tool parsers, and text-plus-image input. The
 checkpoint metadata selects NVFP4 automatically, so the launcher does not force
 a quantization or MoE backend. In particular, it does not force Marlin;
@@ -218,24 +225,15 @@ The shared launcher applies:
 It intentionally does not use `--trust-remote-code`, a forced quantization
 backend, YaRN, or the optional 1,010,000-token extension.
 
-### Measured context limits
+### Context limit
 
-On the tested RTX 5090, 35B-A3B with MTP at 0.93 left 2.15 GiB for KV cache.
-vLLM estimated a maximum length of 185,136 tokens, so the preset uses 185,000.
-Disabling MTP permits the native 262,144-token context, but this profile
-prioritizes speculative decoding.
-
-The 27B preset was measured with the same pinned stack, FP8 KV, MTP=2, and one
-sequence:
-
-- `--max-model-len 130000` at `--gpu-memory-utilization 0.93` completed startup,
-  warmup, health checks, and inference successfully.
-- vLLM reported a GPU KV-cache capacity of 134,285 tokens.
-- The preset uses 130,000, leaving 4,285 tokens below the measured capacity.
-
-Hybrid attention makes capacity nonlinear. Treat these results as specific to
-the exact driver, GPU, vLLM version, and flags; recheck the `GPU KV cache size`
-startup line after changing any of them.
+Qwen3.8-27B has a native 262,144-token context window. This single-GPU profile
+starts at 130,000 tokens to leave room for FP8 KV cache and two-token MTP on a
+32 GB RTX 5090. That deployment limit is conservative rather than a new
+Qwen3.8 measurement. Hybrid attention makes capacity nonlinear, so recheck the
+`GPU KV cache size` startup line and complete an inference smoke test before
+raising it. The upstream model can be extended to one million tokens with YaRN,
+but this profile intentionally stays within the native limit.
 
 ## Privacy, security, and costs
 
@@ -260,7 +258,9 @@ per-user terminal containers, or a hardened public ingress.
 Compose preserves:
 
 - `${HF_CACHE_PATH:-$HOME/.cache/huggingface}` for generation checkpoints
-  downloaded and owned by the host user; vLLM mounts it read-only.
+  downloaded and owned by the host user; vLLM mounts the cache read-only.
+- `${XDG_CACHE_HOME:-$HOME/.cache}/vllm-qwen-nvidia` for the generated tokenizer
+  overlay; vLLM mounts only the corrected file read-only over the snapshot.
 - `${EMBEDDING_CACHE_PATH:-$HOME/.cache/open-webui/embedding}` for the Qwen
   embedding checkpoint downloaded and owned by the host user; Open WebUI mounts
   it read-only.
@@ -358,8 +358,8 @@ Builds perform package installation as root, but each final image declares a
 non-root `USER`. Verify both the image metadata and the rendered Compose users:
 
 ```bash
-docker image inspect qwen3.6-nvfp4-vllm-local:latest \
-  qwen3.6-open-terminal-local:0.11.34 qwen3.6-open-webui-local:v0.10.2 \
+docker image inspect qwen3.8-nvfp4-vllm-local:latest \
+  qwen3.8-open-terminal-local:0.11.34 qwen3.8-open-webui-local:v0.11.1 \
   --format '{{.RepoTags}} user={{.Config.User}}'
 ./scripts/compose.sh config | grep -A1 'user:'
 ```
@@ -406,8 +406,8 @@ terminal file remain available.
 
 ## OpenCode
 
-The standalone [OpenCode configuration](opencode/opencode.json) defines both API
-model names with their measured context limits. It does not depend on `.env` or
+The standalone [OpenCode configuration](opencode/opencode.json) defines the API
+model name with its configured context limit. It does not depend on `.env` or
 Open WebUI:
 
 ```bash
@@ -415,9 +415,9 @@ cp opencode/opencode.json /path/to/project/.opencode.json
 opencode --dir /path/to/project
 ```
 
-The 35B-A3B model is the static default. Choose the 27B entry through OpenCode's
-model picker or with `--model vllm/Qwen3.6-27B`. The selected name must match the
-model currently served by vLLM.
+Qwen3.8-27B is the static default. Choose it through OpenCode's model picker or
+with `--model vllm/Qwen3.8-27B`. The selected name must match the model currently
+served by vLLM.
 
 ## Upstream documentation and credits
 

@@ -34,7 +34,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Versions required by Unsloth's Qwen3.6 NVFP4 guide. Keep vLLM supplied by the base
+# Versions required by Unsloth's Qwen3.8 NVFP4 guide. Keep vLLM supplied by the base
 # image, but ensure its native NVFP4/CUTLASS runtime dependencies are recent enough.
 RUN uv pip install --system \
     "flashinfer-python==0.6.13" \

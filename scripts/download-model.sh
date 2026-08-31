@@ -21,14 +21,11 @@ fi
 preset="$(resolve_model_preset)"
 
 case "$preset" in
-  Qwen3.6-35B-A3B)
-    model_id="unsloth/Qwen3.6-35B-A3B-NVFP4"
-    ;;
-  Qwen3.6-27B)
-    model_id="unsloth/Qwen3.6-27B-NVFP4"
+  Qwen3.8-27B)
+    model_id="unsloth/Qwen3.8-27B-NVFP4"
     ;;
   *)
-    printf 'Unsupported MODEL_PRESET=%q. Choose Qwen3.6-35B-A3B or Qwen3.6-27B.\n' "$preset" >&2
+    printf 'Unsupported MODEL_PRESET=%q. Choose Qwen3.8-27B.\n' "$preset" >&2
     exit 2
     ;;
 esac

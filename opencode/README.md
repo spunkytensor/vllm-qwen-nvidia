@@ -1,11 +1,10 @@
 # OpenCode CLI
 
-The included standalone configuration defines both supported API identities:
+The included standalone configuration defines the supported API identity:
 
 | Model | Context | Output limit |
 |---|---:|---:|
-| `Qwen3.6-35B-A3B` | 185,000 | 8,192 |
-| `Qwen3.6-27B` | 130,000 | 8,192 |
+| `Qwen3.8-27B` | 130,000 | 8,192 |
 
 ## Setup
 
@@ -22,11 +21,11 @@ Then launch OpenCode:
 opencode --dir /path/to/project
 ```
 
-The 35B-A3B model is the static default for all three agents. Select either configured
-model with OpenCode's model picker or explicitly at launch:
+The Qwen3.8 model is the static default for all three agents. Select it with
+OpenCode's model picker or explicitly at launch:
 
 ```bash
-opencode --model vllm/Qwen3.6-27B --dir /path/to/project
+opencode --model vllm/Qwen3.8-27B --dir /path/to/project
 ```
 
 OpenCode does not load or modify the Docker stack. It reads `VLLM_API_KEY` from

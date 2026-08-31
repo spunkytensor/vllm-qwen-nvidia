@@ -2,10 +2,9 @@
 
 set -euo pipefail
 
-readonly PRESET_35B="Qwen3.6-35B-A3B"
-readonly PRESET_27B="Qwen3.6-27B"
+readonly PRESET_27B="Qwen3.8-27B"
 
-MODEL_PRESET="${MODEL_PRESET:-$PRESET_35B}"
+MODEL_PRESET="${MODEL_PRESET:-$PRESET_27B}"
 
 if [[ -z "${VLLM_API_KEY:-}" ]]; then
   printf 'VLLM_API_KEY must be set and non-empty.\n' >&2
@@ -13,21 +12,15 @@ if [[ -z "${VLLM_API_KEY:-}" ]]; then
 fi
 
 case "$MODEL_PRESET" in
-  "$PRESET_35B")
-    model_id="unsloth/Qwen3.6-35B-A3B-NVFP4"
-    preset_max_model_len="185000"
-    preset_gpu_memory_utilization="0.93"
-    preset_mtp_tokens="2"
-    ;;
   "$PRESET_27B")
-    model_id="unsloth/Qwen3.6-27B-NVFP4"
+    model_id="unsloth/Qwen3.8-27B-NVFP4"
     preset_max_model_len="130000"
     preset_gpu_memory_utilization="0.93"
     preset_mtp_tokens="2"
     ;;
   *)
-    printf 'Unsupported MODEL_PRESET=%q. Choose %s or %s.\n' \
-      "$MODEL_PRESET" "$PRESET_35B" "$PRESET_27B" >&2
+    printf 'Unsupported MODEL_PRESET=%q. Choose %s.\n' \
+      "$MODEL_PRESET" "$PRESET_27B" >&2
     exit 2
     ;;
 esac
