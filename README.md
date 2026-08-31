@@ -48,7 +48,7 @@ the base image and GPU runtime before starting the full stack:
 
 ```bash
 docker run --rm --runtime nvidia --gpus all \
-  vllm/vllm-openai:v0.25.1 nvidia-smi
+  vllm/vllm-openai:v0.28.0 nvidia-smi
 ```
 
 ## Supported platform
@@ -193,7 +193,7 @@ system-package installation, Docker socket, or Linux-account provisioning.
 
 | Preset | Checkpoint | Context | Sequences | GPU utilization | MTP |
 |---|---|---:|---:|---:|---:|
-| `Qwen3.8-27B` | `unsloth/Qwen3.8-27B-NVFP4` | 130,000 | 1 | 0.93 | 2 |
+| `Qwen3.8-27B` | `unsloth/Qwen3.8-27B-NVFP4` | 130,000 | 1 | 0.96 | 2 |
 
 ### Why the Unsloth checkpoint
 
@@ -205,18 +205,18 @@ in its published tests. See the [Qwen3.8 guide](https://unsloth.ai/docs/models/q
 [Unsloth model card](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) for the
 serving recipe, requirements, and benchmarks.
 
-The preset uses vLLM 0.25.1, FP8 KV cache, chunked prefill, two-token MTP
-speculation, Qwen reasoning and tool parsers, and text-plus-image input. The
-checkpoint metadata selects NVFP4 automatically, so the launcher does not force
-a quantization or MoE backend. In particular, it does not force Marlin;
+The preset uses vLLM 0.28.0, FP8 KV cache, prefix caching, chunked prefill,
+two-token MTP speculation, Qwen reasoning and tool parsers, and text-plus-image
+input. The checkpoint metadata selects NVFP4 automatically, so the launcher does
+not force a quantization or MoE backend. In particular, it does not force Marlin;
 Unsloth recommends the native CuTe DSL, CUTLASS, and FlashInfer path for these
 checkpoints.
 
 The shared launcher applies:
 
 - `--kv-cache-dtype fp8`
-- `--max-num-batched-tokens 8192`
-- `--no-enable-prefix-caching` and `--enable-chunked-prefill`
+- `--max-num-batched-tokens 4096`
+- `--enable-prefix-caching` and `--enable-chunked-prefill`
 - `--reasoning-parser qwen3`
 - automatic tool choice with `--tool-call-parser qwen3_coder`
 - one image and no video per prompt

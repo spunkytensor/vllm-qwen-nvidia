@@ -15,7 +15,7 @@ case "$MODEL_PRESET" in
   "$PRESET_27B")
     model_id="unsloth/Qwen3.8-27B-NVFP4"
     preset_max_model_len="130000"
-    preset_gpu_memory_utilization="0.93"
+    preset_gpu_memory_utilization="0.96"
     preset_mtp_tokens="2"
     ;;
   *)
@@ -28,7 +28,7 @@ esac
 max_model_len="${MAX_MODEL_LEN:-$preset_max_model_len}"
 gpu_memory_utilization="${GPU_MEMORY_UTILIZATION:-$preset_gpu_memory_utilization}"
 max_num_seqs="${MAX_NUM_SEQS:-1}"
-max_num_batched_tokens="${MAX_NUM_BATCHED_TOKENS:-8192}"
+max_num_batched_tokens="${MAX_NUM_BATCHED_TOKENS:-4096}"
 
 require_positive_integer() {
   local name="$1"
@@ -88,7 +88,7 @@ args=(
   --kv-cache-dtype fp8
   --max-num-seqs "$max_num_seqs"
   --max-num-batched-tokens "$max_num_batched_tokens"
-  --no-enable-prefix-caching
+  --enable-prefix-caching
   --enable-chunked-prefill
   --reasoning-parser qwen3
   --enable-auto-tool-choice

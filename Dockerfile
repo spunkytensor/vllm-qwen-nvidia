@@ -1,4 +1,4 @@
-ARG VLLM_BASE_IMAGE=vllm/vllm-openai:v0.25.1
+ARG VLLM_BASE_IMAGE=vllm/vllm-openai:v0.28.0
 FROM ${VLLM_BASE_IMAGE}
 
 # HF_TOKEN is deliberately absent: baking a token into an image layer would expose it
@@ -34,15 +34,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Versions required by Unsloth's Qwen3.8 NVFP4 guide. Keep vLLM supplied by the base
-# image, but ensure its native NVFP4/CUTLASS runtime dependencies are recent enough.
-RUN uv pip install --system \
-    "flashinfer-python==0.6.13" \
-    "nvidia-cutlass-dsl==4.5.2"
-
 COPY --chmod=755 scripts/serve.sh /opt/vllm/serve.sh
 
-# vLLM v0.25.1 provides this fixed non-root account. Prepare every mutable
+# The vLLM image provides this fixed non-root account. Prepare every mutable
 # runtime path before dropping privileges; package installation above remains a
 # build-time root operation only.
 RUN mkdir -p \
