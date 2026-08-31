@@ -99,14 +99,16 @@ either service. The Compose wrapper detects the invoking host UID, verifies
 both checkpoints, and mounts both caches read-only. vLLM and Open WebUI run in
 Hugging Face offline mode and fail instead of downloading missing files.
 
-The current Unsloth checkpoint has a packaging bug in `tokenizer.json` that
-silently truncates text prompts at 2,048 tokens and can make larger images fail
-with an image-token mismatch. On every `up` or `start`, the Compose wrapper uses
-`jq` to write a corrected copy with only `truncation` changed to `null`, then
-overlay-mounts that file onto the read-only snapshot. It does not modify the
-Hugging Face cache or substitute Qwen's tokenizer, whose other fields differ.
-See the [DGX Spark investigation](https://forums.developer.nvidia.com/t/qwen3-8-27b-nvfp4-on-a-single-dgx-spark-up-to-1m-context-a-tokenizer-bug-worth-knowing-about-and-measurements/380244)
-for the failure analysis and validation measurements.
+Earlier Unsloth revisions had a packaging bug in `tokenizer.json` that silently
+truncated text prompts at 2,048 tokens and could make larger images fail with an
+image-token mismatch. Before creating a container, the Compose wrapper uses
+`jq` to write an idempotently corrected copy with only `truncation` changed to
+`null`, then overlay-mounts that file onto the read-only snapshot. Current
+revisions already contain that value, but the overlay remains as a regression
+safeguard. It does not modify the Hugging Face cache or substitute Qwen's
+tokenizer, whose other fields differ. See the
+[DGX Spark investigation](https://forums.developer.nvidia.com/t/qwen3-8-27b-nvfp4-on-a-single-dgx-spark-up-to-1m-context-a-tokenizer-bug-worth-knowing-about-and-measurements/380244)
+for the original failure analysis and validation measurements.
 
 Model initialization can take several minutes. Open WebUI waits for vLLM and
 Open Terminal to become healthy, then becomes available at
@@ -145,19 +147,84 @@ numeric values fail before vLLM starts.
 
 ### Model selection
 
-The supported preset is `Qwen3.8-27B`. After upgrading an existing checkout,
-change `MODEL_PRESET` in `.env`, download the checkpoint, and recreate vLLM:
+The supported preset is `Qwen3.8-27B`. For a fresh installation, use the commands
+in [Install](#install). When upgrading an existing checkout, first use the
+running Open WebUI container to check for case-insensitive duplicate email
+addresses that would block its v0.11.1 database migration:
 
 ```bash
-./scripts/download-model.sh
-./scripts/compose.sh up -d --force-recreate vllm
+./scripts/compose.sh exec -T open-webui python - <<'PY'
+import sqlite3
+
+database = sqlite3.connect("/app/backend/data/webui.db")
+duplicates = database.execute("""
+    SELECT lower(email), count(*)
+    FROM "user"
+    WHERE email IS NOT NULL
+    GROUP BY lower(email)
+    HAVING count(*) > 1
+    ORDER BY lower(email)
+""").fetchall()
+if duplicates:
+    for email, count in duplicates:
+        print(f"duplicate email: {email} ({count} users)")
+    raise SystemExit(1)
+print("No case-insensitive duplicate emails found.")
+PY
 ```
 
-Open WebUI discovers the model through vLLM's `/v1/models` endpoint.
-Compose keeps its environment-provided backend URL, credential, and model
-defaults authoritative, so recreating the services also updates Open WebUI's
-provider configuration. No Open WebUI image rebuild or database rewrite is
-required.
+Resolve any reported duplicates before continuing. Back up the Open WebUI
+volume, then leave Open WebUI stopped while upgrading:
+
+```bash
+./scripts/compose.sh stop open-webui
+docker run --rm \
+  -v vllm-qwen-nvidia_open-webui-data:/data:ro \
+  -v "$PWD":/backup \
+  alpine:3.22 tar czf /backup/open-webui-data-before-v0.11.1.tar.gz -C /data .
+```
+
+Compose normally prefixes the volume with the checkout directory name; confirm
+the actual name with `docker volume ls`. Set `MODEL_PRESET=Qwen3.8-27B` and remove
+`MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, and
+`MAX_NUM_BATCHED_TOKENS` from `.env` unless those overrides have been retested
+with Qwen3.8 and vLLM 0.28.0. Clear inherited shell overrides, refresh the model
+metadata, and rebuild and recreate the complete stack:
+
+```bash
+unset MAX_MODEL_LEN GPU_MEMORY_UTILIZATION MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS
+./scripts/download-model.sh
+./scripts/compose.sh up -d --build --force-recreate
+```
+
+Do not treat the Open WebUI health check as proof that its migration succeeded.
+Check for migration errors and verify that Alembic's current revision equals its
+head:
+
+```bash
+if ./scripts/compose.sh logs open-webui 2>&1 \
+  | grep -E 'Error running migrations|Cannot add unique normalized user email index'; then
+  echo 'Open WebUI migration failed; restore the backup before retrying.' >&2
+  exit 1
+fi
+./scripts/compose.sh exec -T open-webui sh -lc '
+  cd /app/backend/open_webui
+  current="$(alembic current 2>/dev/null)"
+  heads="$(alembic heads 2>/dev/null)"
+  printf "current=%s\nheads=%s\n" "$current" "$heads"
+  test "$current" = "$heads"
+'
+```
+
+Open WebUI database migrations are not guaranteed to support downgrading to the
+old image. Keep the backup until the upgraded stack has been validated. Compose
+keeps its environment-provided backend URL, credentials, and model defaults
+authoritative after recreation. If using the standalone OpenCode configuration,
+copy the updated `opencode/opencode.json` into the target project again.
+
+After downloading a newer checkpoint revision, use `up --force-recreate vllm`
+rather than `start`: `start` cannot replace the tokenizer overlay mount recorded
+when the container was created.
 
 Verify the active API identity directly:
 

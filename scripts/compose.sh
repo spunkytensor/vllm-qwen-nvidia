@@ -36,21 +36,53 @@ if [[ "$tokenizer_fix_dir" != /* ]]; then
   exit 2
 fi
 
-# The current Unsloth checkpoint compiles a 2,048-token truncation limit into
-# tokenizer.json. Compose overlays a corrected copy without modifying the
-# Hugging Face snapshot. Placeholder values keep non-starting Compose commands
-# renderable before the checkpoint has been downloaded.
+# Earlier Unsloth revisions compiled a 2,048-token truncation limit into
+# tokenizer.json. Compose overlays an idempotently corrected copy without
+# modifying the Hugging Face snapshot. Placeholder values keep commands that do
+# not create containers renderable before the checkpoint has been downloaded.
 VLLM_TOKENIZER_FIX_PATH="$tokenizer_fix_dir/tokenizer-not-downloaded.json"
 VLLM_TOKENIZER_TARGET="/home/vllm/.cache/huggingface/tokenizer-not-downloaded.json"
 export VLLM_TOKENIZER_FIX_PATH VLLM_TOKENIZER_TARGET
 
-requires_models=0
-for compose_arg in "$@"; do
-  if [[ "$compose_arg" == up || "$compose_arg" == start ]]; then
-    requires_models=1
-    break
-  fi
+compose_args=("$@")
+compose_subcommand=""
+arg_index=0
+while (( arg_index < ${#compose_args[@]} )); do
+  compose_arg="${compose_args[$arg_index]}"
+  case "$compose_arg" in
+    --all-resources|--compatibility|--dry-run)
+      ((arg_index += 1))
+      ;;
+    --ansi|--env-file|-f|--file|--parallel|--profile|--progress|--project-directory|-p|--project-name)
+      ((arg_index += 2))
+      ;;
+    --ansi=*|--env-file=*|--file=*|--parallel=*|--profile=*|--progress=*|--project-directory=*|--project-name=*)
+      ((arg_index += 1))
+      ;;
+    --)
+      ((arg_index += 1))
+      if (( arg_index < ${#compose_args[@]} )); then
+        compose_subcommand="${compose_args[$arg_index]}"
+      fi
+      break
+      ;;
+    -*)
+      # Let Docker Compose report unsupported global options.
+      ((arg_index += 1))
+      ;;
+    *)
+      compose_subcommand="$compose_arg"
+      break
+      ;;
+  esac
 done
+
+requires_models=0
+case "$compose_subcommand" in
+  up|create|run)
+    requires_models=1
+    ;;
+esac
 
 if (( requires_models == 1 )); then
   preset="$(resolve_model_preset)"
@@ -103,7 +135,7 @@ if (( requires_models == 1 )); then
     exit 3
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    printf 'jq is required to prepare the Qwen3.8 tokenizer workaround.\n' >&2
+    printf 'jq is required to prepare the Qwen3.8 tokenizer safeguard.\n' >&2
     exit 2
   fi
 
