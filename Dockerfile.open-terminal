@@ -1,4 +1,4 @@
-ARG OPEN_TERMINAL_BASE_IMAGE=ghcr.io/open-webui/open-terminal:0.11.34-slim
+ARG OPEN_TERMINAL_BASE_IMAGE=ghcr.io/open-webui/open-terminal:0.11.36-slim
 FROM ${OPEN_TERMINAL_BASE_IMAGE}
 
 USER root
@@ -8,6 +8,7 @@ COPY LICENSE THIRD_PARTY_NOTICES.txt /usr/share/doc/vllm-qwen-nvidia/
 # The slim upstream image intentionally has no sudo. Add the tools exercised by
 # this stack at build time instead of allowing package installation at runtime.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends nodejs npm \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /home/user/.cache /home/user/.config /home/user/.local/state/open-terminal \
