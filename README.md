@@ -450,3 +450,12 @@ and license expectations remain consistent.
 This wrapper is licensed under the [Apache License 2.0](LICENSE). It does not
 redistribute container images or model weights; those remain subject to their
 upstream licenses and terms.
+
+## Security and software inventory
+
+See the [security policy and supported releases](SECURITY.md),
+[third-party notices](THIRD_PARTY_NOTICES.txt), and
+[SBOM downloads, scan coverage, and outstanding baseline requirements](docs/security-baseline.md).
+The nightly security workflow distinguishes shipped source, upstream images,
+operator-built software, and separately downloaded model assets. Scan artifacts
+and machine-generated license metadata are not a legal compliance certification.

@@ -52,7 +52,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.open-terminal
-    image: qwen3.6-open-terminal-local:0.11.34
+    image: qwen3.6-open-terminal-local:0.11.36
     container_name: qwen3.6-open-terminal
     restart: unless-stopped
     user: "1000:1000"

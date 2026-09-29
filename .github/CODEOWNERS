@@ -1,0 +1,7 @@
+# Review ownership does not enforce branch rules by itself.
+/.github/ @spunkytensor
+/scripts/security-*.sh @spunkytensor
+/SECURITY.md @spunkytensor
+/docs/security-baseline.md @spunkytensor
+/THIRD_PARTY_NOTICES.txt @spunkytensor
+/LICENSE @spunkytensor

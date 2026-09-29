@@ -5,4 +5,5 @@ hf-cache
 vllm-cache
 opencode
 *.md
-LICENSE
+# Include the wrapper license and inventory in locally built derivatives.
+# Upstream license/NOTICE files remain in their original image locations.
