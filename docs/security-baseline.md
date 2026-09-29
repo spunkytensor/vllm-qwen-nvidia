@@ -1,7 +1,7 @@
 # Security baseline adoption and coverage
 
 Owner: Spunky Tensor. Supported source: current `main`. Platform: Linux amd64.
-Baseline: [`69b5f260fb4358acb0e2f7b2a96254ad9cc2322c`](https://github.com/spunkytensor/.github/commit/69b5f260fb4358acb0e2f7b2a96254ad9cc2322c).
+Baseline: [`ed53814ed23f76c11fa4a91f57f99de903c18bfc`](https://github.com/spunkytensor/.github/commit/ed53814ed23f76c11fa4a91f57f99de903c18bfc).
 This is partial adoption, not a compliance certification.
 
 ## Checks and inventory
@@ -13,7 +13,7 @@ caches downloaded. There was no previous security scanner to replace.
 
 | Subject | Coverage | Boundary |
 | --- | --- | --- |
-| Shipped source wrappers/configuration | Trivy secret and misconfiguration scan; PR dependency review | No lockfile/installed package tree: a source vulnerability SBOM would be empty and is deliberately not used |
+| Shipped source wrappers/configuration | Trivy secret and misconfiguration scan | No lockfile/installed package tree: a source vulnerability SBOM would be empty and is deliberately not used |
 | All three upstream Dockerfile default images | Resolve each current tag's Linux amd64 manifest digest; shared pinned Trivy vulnerability scan and SPDX/CycloneDX SBOMs | Upstream components only, not the final derivatives or historical deployed images; downloaded image layers may contain upstream-bundled assets |
 | Built Open Terminal derivative | Build without starting services; scan installed OS/language packages; both SBOMs, image config digest, source commit, timestamp and candidate license table | Includes added nodejs/npm; verifies these appear in detected inventory; not a published manifest digest or release attestation |
 | Built vLLM and Open WebUI derivatives | Dockerfile configuration checks only beyond their scanned upstream bases | Full build/installed-package reconciliation remains pending, particularly vLLM's added FlashInfer/CUTLASS and apt dependencies |
@@ -56,7 +56,7 @@ scan found three Dockerfiles and no High/Critical configuration/secret findings.
 
 ## Outstanding requirements (maintainer owned)
 
-- Verify private vulnerability reporting; enable dependency graph, Dependabot
+- Verify private vulnerability reporting; enable Dependabot
   alerts/updates, secret scanning/push protection, branch required reviews/checks,
   code-owner enforcement, 2FA and periodic access review. No settings changed by
   this adoption. CodeQL does not analyze this shell/Docker-only project.

@@ -70,8 +70,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve-upstream.outputs.matrix) }}
-    uses: spunkytensor/.github/.github/workflows/trivy.yml@69b5f260fb4358acb0e2f7b2a96254ad9cc2322c
+    uses: spunkytensor/.github/.github/workflows/trivy.yml@ed53814ed23f76c11fa4a91f57f99de903c18bfc
     with:
+      baseline-sha: ed53814ed23f76c11fa4a91f57f99de903c18bfc
       image-ref: ${{ matrix.image }}
       artifact-name: security-upstream-${{ matrix.name }}-amd64
 
@@ -122,15 +123,3 @@ jobs:
           path: ${{ runner.temp }}/terminal-reports/
           if-no-files-found: error
           retention-days: 30
-
-  dependency-review:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/dependency-review-action@5dd1a818453bcefdd972f23546c3cee641dc0e34
-        with:
-          fail-on-severity: high
