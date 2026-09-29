@@ -41,6 +41,7 @@ RUN uv pip install --system \
     "nvidia-cutlass-dsl==4.5.2"
 
 COPY --chmod=755 scripts/serve.sh /opt/vllm/serve.sh
+COPY LICENSE THIRD_PARTY_NOTICES.txt /usr/share/doc/vllm-qwen-nvidia/
 
 # vLLM v0.25.1 provides this fixed non-root account. Prepare every mutable
 # runtime path before dropping privileges; package installation above remains a

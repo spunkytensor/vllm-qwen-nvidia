@@ -1,0 +1,55 @@
+Third-party inventory and review status
+======================================
+
+This repository's wrapper scripts/configuration are licensed under Apache-2.0
+(see LICENSE). This inventory does not relicense third-party software, constitute
+an Apache NOTICE file, or replace upstream license texts and required notices.
+
+Source distribution
+-------------------
+The source archive contains wrapper scripts, Dockerfiles, configuration,
+documentation, and logo.jpg. No resolved language dependency tree, upstream image,
+or model weights are shipped in this archive. The provenance and redistribution
+rights of logo.jpg still need maintainer confirmation.
+
+Operator-built software (not published by this repository)
+--------------------------------------------------------
+Dockerfile: vllm/vllm-openai:v0.25.1 from https://github.com/vllm-project/vllm
+adds curl, ca-certificates, flashinfer-python 0.6.13
+(https://github.com/flashinfer-ai/flashinfer), and nvidia-cutlass-dsl 4.5.2
+(https://github.com/NVIDIA/cutlass). CUDA/NVIDIA components have their own terms.
+
+Dockerfile.open-terminal: ghcr.io/open-webui/open-terminal:0.11.34-slim from
+https://github.com/open-webui/open-terminal adds distribution nodejs and npm.
+
+Dockerfile.open-webui: ghcr.io/open-webui/open-webui:v0.10.2 from
+https://github.com/open-webui/open-webui adds local user/directory configuration.
+Review the exact upstream version's license, branding requirements, bundled
+assets, and exceptions; do not assume it is covered by this wrapper's Apache-2.0.
+
+These images contain transitive Python, JavaScript, OS, and native dependencies.
+Security workflow SBOMs describe detected installed packages, not every asset.
+The built-terminal attribution-candidates.tsv is machine metadata for review,
+not legally sufficient attribution. Retain upstream copyright/license/NOTICE
+files already in images. Before distributing any derivative image, reconcile
+the entire image, collect required license texts/notices and source offers, and
+ship reviewed notices both inside the image and with release downloads.
+
+Externally downloaded model assets (not shipped here)
+---------------------------------------------------
+https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4
+https://huggingface.co/unsloth/Qwen3.6-27B-NVFP4
+https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+
+The host download helper retrieves these separately; CI does not download or
+execute weights. Operators must review each exact revision's model card, LICENSE,
+base-model/quantization terms, tokenizer and other asset notices before use or
+redistribution. Revisions are not pinned by the existing downloader; record the
+resolved revision and hashes locally. No model licensing determination is made
+by the package SBOM or this notice.
+
+External tools/services
+-----------------------
+Hugging Face CLI/uv and optional OpenCode are operator tools, not shipped runtime
+packages. Tavily is an external service subject to its own terms and privacy
+policy; outbound searches are not local-only processing.

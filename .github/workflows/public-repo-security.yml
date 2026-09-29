@@ -1,0 +1,136 @@
+name: Spunky Tensor security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '39 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate shell syntax and security gates
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+          python3 -m unittest discover -s tests -v
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.74.0
+          cache: false
+      - name: Check source configuration and secrets (no source package manifest)
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p source-reports
+          trivy fs "$GITHUB_WORKSPACE" --scanners misconfig,secret \
+            --ignorefile /dev/null --exit-code 0 --format json --output source-reports/trivy.json
+          trivy version --format json > source-reports/trivy-version.json
+          jq -e '[.Results[]? | (.Misconfigurations[]?, .Secrets[]?) |
+            select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length == 0' source-reports/trivy.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: security-source
+          path: ${{ runner.temp }}/source-reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  resolve-upstream:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.images.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: images
+        name: Resolve Dockerfile defaults to Linux amd64 manifest digests
+        run: |
+          bash scripts/security-images.sh > "$RUNNER_TEMP/upstream-images.json"
+          echo "matrix=$(jq -c . "$RUNNER_TEMP/upstream-images.json")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: upstream-image-identities
+          path: ${{ runner.temp }}/upstream-images.json
+          if-no-files-found: error
+          retention-days: 30
+
+  upstream:
+    needs: resolve-upstream
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve-upstream.outputs.matrix) }}
+    uses: spunkytensor/.github/.github/workflows/trivy.yml@69b5f260fb4358acb0e2f7b2a96254ad9cc2322c
+    with:
+      image-ref: ${{ matrix.image }}
+      artifact-name: security-upstream-${{ matrix.name }}-amd64
+
+  terminal-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.74.0
+          cache: false
+      - name: Build actual terminal derivative without publishing or starting services
+        run: |
+          docker build --pull --platform linux/amd64 -f Dockerfile.open-terminal -t security-terminal:local .
+          docker image inspect security-terminal:local > "$RUNNER_TEMP/terminal-image.json"
+      - name: Scan installed OS and language packages and generate attribution candidates
+        working-directory: ${{ runner.temp }}
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          mkdir -p terminal-reports
+          cp terminal-image.json terminal-reports/
+          jq -n --arg commit "$GITHUB_SHA" --arg time "$(date -u +%FT%TZ)" \
+            --arg image "$(docker image inspect security-terminal:local --format '{{.Id}}')" \
+            '{source_commit: $commit, image_config_digest: $image, generated_at: $time, platform: "linux/amd64"}' \
+            > terminal-reports/subject.json
+          trivy image --image-src docker --scanners vuln --list-all-pkgs \
+            --ignorefile /dev/null --ignore-unfixed=false --exit-code 0 \
+            --format json --output terminal-reports/trivy.json security-terminal:local
+          trivy version --format json > terminal-reports/trivy-version.json
+          trivy convert --format spdx-json --output terminal-reports/sbom.spdx.json terminal-reports/trivy.json
+          trivy convert --format cyclonedx --output terminal-reports/sbom.cdx.json terminal-reports/trivy.json
+          jq -r '["name", "version", "license_metadata"],
+            (.Results[]?.Packages[]? | [.Name, .Version, ((.Licenses // []) | join(";"))]) | @tsv' \
+            terminal-reports/trivy.json > terminal-reports/attribution-candidates.tsv
+          (cd terminal-reports && sha256sum ./*.json ./*.tsv > SHA256SUMS)
+          # Reconcile the packages added by this Dockerfile against detected inventory.
+          jq -e '[.Results[]?.Packages[]?.Name] | index("nodejs") != null and index("npm") != null' \
+            terminal-reports/trivy.json
+          bash "$GITHUB_WORKSPACE/scripts/security-gate.sh" terminal-reports/trivy.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: security-built-terminal-amd64
+          path: ${{ runner.temp }}/terminal-reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@5dd1a818453bcefdd972f23546c3cee641dc0e34
+        with:
+          fail-on-severity: high

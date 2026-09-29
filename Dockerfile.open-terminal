@@ -3,6 +3,8 @@ FROM ${OPEN_TERMINAL_BASE_IMAGE}
 
 USER root
 
+COPY LICENSE THIRD_PARTY_NOTICES.txt /usr/share/doc/vllm-qwen-nvidia/
+
 # The slim upstream image intentionally has no sudo. Add the tools exercised by
 # this stack at build time instead of allowing package installation at runtime.
 RUN apt-get update \
