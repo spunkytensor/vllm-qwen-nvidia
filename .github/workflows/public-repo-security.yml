@@ -59,17 +59,6 @@ jobs:
         with:
           version: v0.74.0
           cache: false
-      # The unpacked vLLM image alone is about 28 GB; the root disk is too small.
-      - name: Move Docker storage to the runner's larger disk
-        run: |
-          sudo systemctl stop docker.socket docker.service
-          config=/etc/docker/daemon.json
-          if [[ ! -s "$config" ]]; then echo '{}' | sudo tee "$config" >/dev/null; fi
-          sudo jq '. + {"data-root": "/mnt/docker"}' "$config" | sudo tee "$config.new" >/dev/null
-          sudo mv "$config.new" "$config"
-          sudo systemctl start docker
-          test "$(docker info --format '{{.DockerRootDir}}')" = /mnt/docker
-          df -h / /mnt
       - name: Build and push to a job-local registry
         env:
           IMAGE: ${{ matrix.image }}
