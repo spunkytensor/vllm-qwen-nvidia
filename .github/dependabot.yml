@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Base image digests; newer upstream images are the main source of CVE fixes.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

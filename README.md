@@ -176,9 +176,10 @@ feature usage and administration, refer to:
 The terminal uses one persistent Docker volume shared by approved users. It is
 appropriate for demonstrations with trusted participants, not anonymous public
 access or strong per-user isolation. Its image is based on Open Terminal's slim
-variant and includes Python, Node.js, npm, Git, curl, and jq. Packages must be
-added when building the image; the running terminal has no `sudo`, runtime
-system-package installation, Docker socket, or Linux-account provisioning.
+variant and includes Python, Node.js LTS with npm (copied from the official
+Node.js image), Git, curl, and jq. Packages must be added when building the
+image; the running terminal has no `sudo`, runtime system-package
+installation, Docker socket, or Linux-account provisioning.
 
 ## Model and runtime defaults
 
@@ -256,6 +257,19 @@ expose ports 3000 or 8000 directly to an untrusted network. vLLM's API key does
 not protect every non-OpenAI endpoint, so loopback binding or a firewall remains
 part of the security boundary. This stack does not provide TLS, rate limiting,
 per-user terminal containers, or a hardened public ingress.
+
+### Vulnerability scanning
+
+`.github/workflows/public-repo-security.yml` runs the shared Spunky Tensor
+Trivy baseline on pull requests, pushes to `main`, and nightly. It scans the
+Python pins in `docker/*/requirements.txt` and builds and scans all three
+images, failing on any High or Critical finding, including findings that
+upstream has not fixed yet. Reports and SBOMs are kept as workflow artifacts.
+
+Base images are pinned by digest and updated by Dependabot. Each build also
+applies the distribution's security updates and the Python overrides in
+`docker/*/requirements.txt`; remove an override once the base image ships a
+fixed version.
 
 ## Persistent data
 
@@ -361,7 +375,7 @@ non-root `USER`. Verify both the image metadata and the rendered Compose users:
 
 ```bash
 docker image inspect qwen3.6-nvfp4-vllm-local:latest \
-  qwen3.6-open-terminal-local:0.11.34 qwen3.6-open-webui-local:v0.10.2 \
+  qwen3.6-open-terminal-local:0.14.0 qwen3.6-open-webui-local:v0.12.0 \
   --format '{{.RepoTags}} user={{.Config.User}}'
 ./scripts/compose.sh config | grep -A1 'user:'
 ```

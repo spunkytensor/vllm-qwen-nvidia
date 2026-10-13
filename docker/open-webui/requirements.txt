@@ -1,0 +1,19 @@
+# Security overrides applied on top of the pinned Open WebUI base image.
+# Each pin is the latest patch of the earliest release line that fixes the
+# High/Critical advisories Trivy reports for the upstream package. Drop a pin
+# once the base image ships the same or a newer version. The image build runs
+# `pip check`.
+cryptography==50.0.2
+# datasets 4.x caps fsspec below the fixed release; Open WebUI only imports it
+# for local SpeechT5 text-to-speech, which this stack does not configure.
+datasets==5.0.1
+fsspec==2026.6.0
+mcp==1.28.1
+pyarrow==23.0.1
+PyJWT==2.14.0
+pypdf==6.19.0
+sentence-transformers==5.6.1
+# Vendors fixed jaraco.context and wheel.
+setuptools==80.10.2
+transformers==5.10.4
+unstructured==0.24.1
