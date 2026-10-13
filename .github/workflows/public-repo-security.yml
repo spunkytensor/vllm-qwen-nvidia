@@ -1,0 +1,98 @@
+name: Spunky Tensor security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '57 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Inventories the Python packages this repository installs on top of the
+  # upstream images (docker/*/requirements.txt).
+  source:
+    uses: spunkytensor/.github/.github/workflows/trivy.yml@01ae82a5ea8d846daa71b8afce10578e2dd2392c
+    with:
+      baseline-sha: 01ae82a5ea8d846daa71b8afce10578e2dd2392c
+
+  # The images are built locally by users and never published, so scan what
+  # the current Dockerfiles build. The shared workflow cannot receive a locally
+  # built image, so push it to a job-local registry and run the same baseline
+  # script against its manifest digest.
+  image:
+    name: image (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: vllm
+            dockerfile: Dockerfile
+          - image: open-webui
+            dockerfile: Dockerfile.open-webui
+          - image: open-terminal
+            dockerfile: Dockerfile.open-terminal
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+      - name: Checkout shared tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: spunkytensor/.github
+          ref: 01ae82a5ea8d846daa71b8afce10578e2dd2392c
+          path: baseline
+          persist-credentials: false
+      - name: Install pinned Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.74.0
+          cache: false
+      # The unpacked vLLM image alone is about 28 GB; the root disk is too small.
+      - name: Move Docker storage to the runner's larger disk
+        run: |
+          sudo systemctl stop docker.socket docker.service
+          config=/etc/docker/daemon.json
+          if [[ ! -s "$config" ]]; then echo '{}' | sudo tee "$config" >/dev/null; fi
+          sudo jq '. + {"data-root": "/mnt/docker"}' "$config" | sudo tee "$config.new" >/dev/null
+          sudo mv "$config.new" "$config"
+          sudo systemctl start docker
+          test "$(docker info --format '{{.DockerRootDir}}')" = /mnt/docker
+          df -h / /mnt
+      - name: Build and push to a job-local registry
+        env:
+          IMAGE: ${{ matrix.image }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          docker run --detach --name registry --publish 127.0.0.1:5000:5000 \
+            registry:3.1.2@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8
+          docker buildx build --platform linux/amd64 --provenance=false --sbom=false --push \
+            --tag "localhost:5000/$IMAGE:ci" --file "source/$DOCKERFILE" source
+          digest=$(curl --fail --silent --show-error --head \
+            --header 'Accept: application/vnd.oci.image.manifest.v1+json' \
+            --header 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+            "http://localhost:5000/v2/$IMAGE/manifests/ci" \
+            | tr -d '\r' | awk 'tolower($1) == "docker-content-digest:" { print $2 }')
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "IMAGE_REF=localhost:5000/$IMAGE@$digest" >> "$GITHUB_ENV"
+      - name: Run standalone scan
+        run: bash baseline/scripts/scan.sh image "$IMAGE_REF" "$RUNNER_TEMP/security-reports"
+      - name: Retain evidence even when the gate fails
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-image-${{ matrix.image }}-amd64
+          path: ${{ runner.temp }}/security-reports/
+          if-no-files-found: error
+          retention-days: 30

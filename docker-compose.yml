@@ -52,7 +52,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.open-terminal
-    image: qwen3.6-open-terminal-local:0.11.34
+    image: qwen3.6-open-terminal-local:0.14.0
     container_name: qwen3.6-open-terminal
     restart: unless-stopped
     user: "1000:1000"
@@ -85,7 +85,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.open-webui
-    image: qwen3.6-open-webui-local:v0.10.2
+    image: qwen3.6-open-webui-local:v0.12.0
     container_name: qwen3.6-open-webui
     restart: unless-stopped
     user: "10001:10001"

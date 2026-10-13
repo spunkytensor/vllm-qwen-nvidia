@@ -1,5 +1,4 @@
-ARG VLLM_BASE_IMAGE=vllm/vllm-openai:v0.25.1
-FROM ${VLLM_BASE_IMAGE}
+FROM vllm/vllm-openai:v0.25.1@sha256:e4f88a835143cd22aee2397a26ec6bb80b3a4a6fe0c882bcbc63822904766089
 
 # HF_TOKEN is deliberately absent: baking a token into an image layer would expose it
 # via `docker inspect`. It is only needed for gated/private repos (this checkpoint is
@@ -30,15 +29,21 @@ ENV VLLM_ALLOW_LONG_MAX_MODEL_LEN=0 \
     VLLM_USE_FLASHINFER_SAMPLER=0 \
     OMP_NUM_THREADS=4
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+# Apply Ubuntu security updates published after the upstream image was built.
+# Only /etc/apt/sources.list (the Ubuntu archive) is used, so the CUDA and Python
+# PPA packages that vLLM was built against stay at the base image's versions.
+RUN apt-get -o Dir::Etc::SourceParts=- update \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Dir::Etc::SourceParts=- upgrade -y --no-install-recommends \
+    && apt-get -o Dir::Etc::SourceParts=- install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Versions required by Unsloth's Qwen3.6 NVFP4 guide. Keep vLLM supplied by the base
-# image, but ensure its native NVFP4/CUTLASS runtime dependencies are recent enough.
-RUN uv pip install --system \
-    "flashinfer-python==0.6.13" \
-    "nvidia-cutlass-dsl==4.5.2"
+# The base image already fails `uv pip check` (nixl pins an older nixl-cu13), so
+# fail only on dependency conflicts that these installs introduce.
+COPY docker/vllm/requirements.txt /tmp/vllm-requirements.txt
+RUN (uv pip check --system 2>&1 || true) | grep -F ' requires ' > /tmp/pip-check-base.txt; \
+    uv pip install --system -r /tmp/vllm-requirements.txt \
+    && (uv pip check --system 2>&1 || true) | grep -F ' requires ' | diff /tmp/pip-check-base.txt - \
+    && rm /tmp/vllm-requirements.txt /tmp/pip-check-base.txt
 
 COPY --chmod=755 scripts/serve.sh /opt/vllm/serve.sh
 
