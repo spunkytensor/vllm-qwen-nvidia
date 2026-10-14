@@ -2,6 +2,14 @@
 
 set -euo pipefail
 
+if (( $(id -u) == 0 )); then
+  printf 'Refusing to run vLLM as root. Use a non-root host account with ./scripts/compose.sh.\n' >&2
+  exit 2
+fi
+
+# Do not allow HTTP redirects to bypass the media hostname restriction below.
+export VLLM_MEDIA_URL_ALLOW_REDIRECTS=0
+
 readonly PRESET_35B="Qwen3.6-35B-A3B"
 readonly PRESET_27B="Qwen3.6-27B"
 
@@ -89,6 +97,10 @@ args=(
   --served-model-name "$MODEL_PRESET"
   --host 0.0.0.0
   --port 8000
+  --disable-fastapi-docs
+  # An empty allowlist means unrestricted in vLLM. This reserved .invalid
+  # hostname rejects ordinary remote URLs while preserving inline data: images.
+  --allowed-media-domains invalid.invalid
   --dtype auto
   --max-model-len "$max_model_len"
   --gpu-memory-utilization "$gpu_memory_utilization"

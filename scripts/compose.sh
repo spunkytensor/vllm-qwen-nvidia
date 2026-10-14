@@ -33,6 +33,11 @@ for compose_arg in "$@"; do
 done
 
 if (( requires_models == 1 )); then
+  if (( VLLM_UID == 0 )); then
+    printf 'Refusing to start vLLM as root. Run this wrapper from a non-root host account.\n' >&2
+    exit 2
+  fi
+
   preset="$(resolve_model_preset)"
   case "$preset" in
     Qwen3.6-35B-A3B)

@@ -9,6 +9,7 @@ services:
     user: "${VLLM_UID:?Run ./scripts/compose.sh so the host UID is detected}:0"
     runtime: nvidia
     shm_size: ${VLLM_SHM_SIZE:-8gb}
+    pids_limit: ${VLLM_PIDS_LIMIT:-1024}
     read_only: true
     cap_drop:
       - ALL

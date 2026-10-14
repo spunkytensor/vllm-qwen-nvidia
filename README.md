@@ -97,6 +97,7 @@ The top-level `.env` is the operator interface. These are the primary settings:
 | `HOST_PORT` | `8000` | Publish the vLLM API on this host port. |
 | `VLLM_BIND_ADDRESS` | `127.0.0.1` | Host address on which to publish vLLM. |
 | `VLLM_SHM_SIZE` | `8gb` | Size of vLLM's private shared-memory filesystem. |
+| `VLLM_PIDS_LIMIT` | `1024` | Container process/thread ceiling; increase only if the GPU workload requires it. |
 | `VLLM_API_KEY` | none | Authenticate vLLM clients; replace the example value. |
 | `HF_CACHE_PATH` | `$HOME/.cache/huggingface` | Host cache populated before the stack starts and mounted read-only into vLLM. |
 
@@ -192,6 +193,30 @@ not protect every non-OpenAI endpoint, so loopback binding or a firewall remains
 part of the security boundary. This stack does not provide TLS, rate limiting,
 per-user authentication, or a hardened public ingress.
 
+### Runtime hardening
+
+- The wrapper refuses `up` and `start` from host UID 0. The container launcher
+  independently refuses UID 0, including when Compose is bypassed. Use a
+  non-root account with Docker access; root can still stop the old stack.
+- Image inputs must use inline base64 `data:` URLs instead of remote URLs.
+  The media domain allowlist contains only the reserved hostname
+  `invalid.invalid`; an empty list in vLLM would allow every hostname. Do not
+  map this reserved name to a real destination in DNS or `/etc/hosts`.
+  Media redirects are disabled, and local-file media access stays disabled.
+  This reduces server-side request forgery exposure, but it is **not** a
+  general network egress firewall or a guarantee that image decoders are safe.
+- `/docs`, `/redoc`, and `/openapi.json` are disabled. This removes unnecessary
+  endpoints, not the need for authentication and network isolation.
+- Compose caps the total number of processes and threads at 1,024 by default.
+  If cold-cache GPU initialization hits this ceiling, measure usage and raise
+  `VLLM_PIDS_LIMIT` rather than disabling the limit. This does not cap memory
+  usage or substitute for request limits at an ingress proxy.
+
+Keep the deployment host's kernel, NVIDIA driver, NVIDIA Container Toolkit,
+and Docker patched. Containers share the host kernel; updating packages in
+the image does not patch that kernel. Offline Hugging Face settings are not a
+network firewall: enforce outbound restrictions on the host if required.
+
 ### Vulnerability scanning
 
 `.github/workflows/public-repo-security.yml` runs the shared Spunky Tensor
@@ -204,6 +229,15 @@ The base image is pinned by digest and updated by Dependabot. Each build also
 applies the distribution's security updates and the Python overrides in
 `docker/vllm/requirements.txt`; remove an override once the base image ships a
 fixed version.
+
+The October 14, 2026 scan of the vLLM-only image attributed all 204 High/Critical
+findings to `linux-libc-dev` (development headers from Ubuntu's `linux` source
+package), not to scanned Python or Rust packages. This does not establish
+host-kernel exploitability or absence of other vulnerabilities. Headers and
+compilers are retained because cold-cache GPU compilation may require them;
+runtime hardening neither patches these reported CVEs nor suppresses the gate.
+Removing build dependencies requires testing both presets with empty runtime
+caches on a compatible GPU first.
 
 ## Persistent data
 
@@ -284,7 +318,8 @@ Test the stack in layers so failures remain easy to locate.
 
 ```bash
 for script in scripts/*.sh; do bash -n "$script"; done
-shellcheck --shell=bash scripts/*.sh
+shellcheck --shell=bash --exclude=SC2016 scripts/*.sh
+python3 -B -m unittest discover -s tests -v
 jq empty opencode/opencode.json
 ./scripts/compose.sh config --quiet
 ./scripts/compose.sh config --services  # must print only vllm
@@ -340,6 +375,15 @@ jq -n --arg model "$model" \
 Confirm an unauthenticated request to `/v1/models` returns HTTP 401. Restart
 vLLM and repeat the authenticated request to verify offline startup and cache
 reuse. Repeat with each supported preset on a compatible GPU host.
+
+For the hardening policy, also verify on that host:
+
+- `/docs`, `/redoc`, and `/openapi.json` return 404, even with a valid API key.
+- A valid inline base64 image still works; image URLs targeting loopback,
+  cloud metadata addresses, and public websites are rejected.
+- `docker inspect qwen3.6-nvfp4-vllm --format '{{.HostConfig.PidsLimit}}'`
+  reports the configured limit. Test startup with a fresh runtime cache and
+  watch for process/thread exhaustion before adopting a lower ceiling.
 
 ## OpenCode
 
