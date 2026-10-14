@@ -19,16 +19,10 @@ if [[ "$cache_path" != /* ]]; then
   printf 'HF_CACHE_PATH must be absolute; got %q.\n' "$cache_path" >&2
   exit 2
 fi
-embedding_cache_path="${EMBEDDING_CACHE_PATH:-${HOME}/.cache/open-webui/embedding}"
-if [[ "$embedding_cache_path" != /* ]]; then
-  printf 'EMBEDDING_CACHE_PATH must be absolute; got %q.\n' "$embedding_cache_path" >&2
-  exit 2
-fi
 
 VLLM_UID="$(id -u)"
 export VLLM_UID
 export HF_CACHE_PATH="$cache_path"
-export EMBEDDING_CACHE_PATH="$embedding_cache_path"
 
 requires_models=0
 for compose_arg in "$@"; do
@@ -55,22 +49,16 @@ if (( requires_models == 1 )); then
 
   shopt -s nullglob
   generation_configs=("$cache_path/hub/$model_cache_name"/snapshots/*/config.json)
-  embedding_configs=("$embedding_cache_path/models--Qwen--Qwen3-Embedding-0.6B"/snapshots/*/config.json)
   shopt -u nullglob
 
   generation_ready=0
   for config_path in "${generation_configs[@]}"; do
     [[ -r "$config_path" ]] && generation_ready=1 && break
   done
-  embedding_ready=0
-  for config_path in "${embedding_configs[@]}"; do
-    [[ -r "$config_path" ]] && embedding_ready=1 && break
-  done
 
-  if (( generation_ready == 0 || embedding_ready == 0 )); then
-    (( generation_ready == 1 )) || printf 'Missing generation checkpoint for %s in %s.\n' "$preset" "$cache_path" >&2
-    (( embedding_ready == 1 )) || printf 'Missing Qwen/Qwen3-Embedding-0.6B in %s.\n' "$embedding_cache_path" >&2
-    printf 'Provision all required models first with: ./scripts/download-model.sh\n' >&2
+  if (( generation_ready == 0 )); then
+    printf 'Missing generation checkpoint for %s in %s.\n' "$preset" "$cache_path" >&2
+    printf 'Provision the selected model first with: ./scripts/download-model.sh\n' >&2
     exit 3
   fi
 fi

@@ -37,10 +37,6 @@ jobs:
         include:
           - image: vllm
             dockerfile: Dockerfile
-          - image: open-webui
-            dockerfile: Dockerfile.open-webui
-          - image: open-terminal
-            dockerfile: Dockerfile.open-terminal
     steps:
       - name: Checkout source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -4,9 +4,9 @@
 
 This repository runs either of two Unsloth NVFP4 Qwen3.6 checkpoints on one
 NVIDIA GPU and exposes them through vLLM's OpenAI-compatible API. The default
-Docker Compose stack also provides an authenticated Open WebUI, Tavily web
-search, CPU-based Qwen embeddings for RAG, and an isolated Open Terminal coding
-workspace.
+Docker Compose stack runs only vLLM. Connect with an OpenAI-compatible client
+or the optional standalone OpenCode configuration; no web interface, search
+provider, embedding service, or terminal server is bundled.
 
 This project is tuned and measured on one NVIDIA RTX 5090 with 32 GB of
 VRAM. It has no SLA or warranty. The wrapper is open source under the
@@ -15,23 +15,12 @@ VRAM. It has no SLA or warranty. The wrapper is open source under the
 
 ## How it works
 
-```mermaid
-flowchart LR
-    browser["Browser<br/>Open WebUI :3000"] --> webui["Open WebUI<br/>chat + tools + knowledge"]
-    client["OpenAI client / OpenCode"] --> api["vLLM API :8000"]
-    webui -->|"OpenAI-compatible API"| api
-    api --> model["Qwen3.6 NVFP4<br/>RTX 5090"]
-
-    webui -->|"web search"| tavily["Tavily API"]
-    webui -->|"local embeddings"| embed["Qwen3-Embedding-0.6B<br/>CPU"]
-    embed --> knowledge["Open WebUI knowledge store"]
-    webui -->|"server-side proxy"| terminal["Open Terminal<br/>isolated persistent volume"]
+```text
+OpenAI client / OpenCode → vLLM API :8000 → Qwen3.6 NVFP4 on RTX 5090
 ```
 
-Only vLLM receives the NVIDIA device. Open WebUI runs the embedding model on
-CPU, and Open Terminal has neither the host checkout nor the Docker socket
-mounted. The terminal is nevertheless a shared command-execution environment;
-grant access only to trusted users.
+vLLM receives the NVIDIA device and a read-only host checkpoint cache. Its API
+requires a Bearer token and binds to host loopback by default.
 
 ## Requirements
 
@@ -39,9 +28,7 @@ grant access only to trusted users.
   for Blackwell.
 - Docker Engine with the Compose plugin.
 - NVIDIA Container Toolkit configured for Docker.
-- Enough disk for the selected checkpoint, the approximately 1.2 GB embedding
-  model, the Open Terminal image, and persistent caches.
-- A Tavily API key for web search.
+- Enough disk for the selected checkpoint, the vLLM image, and persistent caches.
 
 The pinned vLLM image uses CUDA 13. A driver that is too old can fail with
 `Error 804: forward compatibility was attempted on non supported HW`. Verify
@@ -69,46 +56,36 @@ cd vllm-qwen-nvidia
 cp .env.example .env
 ```
 
-Generate three independent secrets and paste them into `.env` as
-`VLLM_API_KEY`, `WEBUI_SECRET_KEY`, and `OPEN_TERMINAL_API_KEY`:
+Generate a secret and paste it into `.env` as `VLLM_API_KEY`:
 
 ```bash
 openssl rand -hex 32
-openssl rand -hex 32
-openssl rand -hex 32
 ```
 
-Add your `TAVILY_API_KEY`, download the selected generation model and the fixed
-embedding model with the host Hugging Face CLI (installed directly or invoked
-ephemerally through `uvx`), then start the complete stack:
+Download the selected model with the host Hugging Face CLI (installed directly
+or invoked ephemerally through `uvx`), then start vLLM:
 
 ```bash
 ./scripts/download-model.sh
 ./scripts/compose.sh up -d --build
-./scripts/compose.sh logs -f vllm open-terminal open-webui
+./scripts/compose.sh logs -f vllm
 ```
 
 The stack never downloads model assets. `download-model.sh` reads
 `MODEL_PRESET` from the environment or `.env`, defaults to
 `Qwen3.6-35B-A3B`, and stores the generation checkpoint in
-`${HF_CACHE_PATH:-$HOME/.cache/huggingface}`. It also provisions
-`Qwen/Qwen3-Embedding-0.6B` in
-`${EMBEDDING_CACHE_PATH:-$HOME/.cache/open-webui/embedding}`. Set `HF_TOKEN` in
-the host shell when the Hugging Face CLI needs one; the token is not passed into
-either service. The Compose wrapper detects the invoking host UID, verifies
-both checkpoints, and mounts both caches read-only. vLLM and Open WebUI run in
-Hugging Face offline mode and fail instead of downloading missing files.
+`${HF_CACHE_PATH:-$HOME/.cache/huggingface}`. Set `HF_TOKEN` in the host shell
+when the Hugging Face CLI needs one; the token is not passed into vLLM. The
+Compose wrapper detects the invoking host UID, checks for the selected
+checkpoint, and mounts the cache read-only. vLLM runs in Hugging Face offline
+mode and fails instead of downloading missing files.
 
-Model initialization can take several minutes. Open WebUI waits for vLLM and
-Open Terminal to become healthy, then becomes available at
-<http://localhost:3000>. The first account created is the administrator;
-subsequent accounts remain pending until approved.
-
-The raw vLLM API remains available at <http://localhost:8000/v1> and requires
-`VLLM_API_KEY` as a Bearer token. Compose passes that credential to Open WebUI
-automatically. Both published services bind to loopback by default; do not
-change the bind addresses without an appropriate firewall or authenticated TLS
-reverse proxy.
+Model initialization can take several minutes. The vLLM API is available at
+<http://localhost:8000/v1> and requires `VLLM_API_KEY` as a Bearer token. Do not
+change the loopback bind address without an appropriate firewall or
+authenticated TLS reverse proxy. For the API examples below, export
+`VLLM_API_KEY` in your client shell with the same value as the server's `.env`;
+the shell does not automatically load that file.
 
 ## Configuration
 
@@ -118,17 +95,10 @@ The top-level `.env` is the operator interface. These are the primary settings:
 |---|---:|---|
 | `MODEL_PRESET` | `Qwen3.6-35B-A3B` | Select the complete validated vLLM profile. |
 | `HOST_PORT` | `8000` | Publish the vLLM API on this host port. |
-| `OPEN_WEBUI_PORT` | `3000` | Publish Open WebUI on this host port. |
 | `VLLM_BIND_ADDRESS` | `127.0.0.1` | Host address on which to publish vLLM. |
-| `OPEN_WEBUI_BIND_ADDRESS` | `127.0.0.1` | Host address on which to publish Open WebUI. |
 | `VLLM_SHM_SIZE` | `8gb` | Size of vLLM's private shared-memory filesystem. |
-| `VLLM_API_KEY` | none | Authenticate vLLM clients; also configured in Open WebUI. |
-| `WEBUI_SECRET_KEY` | none | Sign Open WebUI sessions; replace the example value. |
-| `OPEN_TERMINAL_API_KEY` | none | Authenticate Open WebUI to Open Terminal; replace the example value. |
-| `TAVILY_API_KEY` | none | Enable Tavily-backed web search. |
-| `OPEN_TERMINAL_MAX_SESSIONS` | `8` | Limit simultaneous sessions in the shared sandbox. |
+| `VLLM_API_KEY` | none | Authenticate vLLM clients; replace the example value. |
 | `HF_CACHE_PATH` | `$HOME/.cache/huggingface` | Host cache populated before the stack starts and mounted read-only into vLLM. |
-| `EMBEDDING_CACHE_PATH` | `$HOME/.cache/open-webui/embedding` | Host cache containing the externally downloaded Qwen embedding model. |
 
 Safe vLLM experiment overrides are also available: `MAX_MODEL_LEN`,
 `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, and `MAX_NUM_BATCHED_TOKENS`. Invalid
@@ -144,42 +114,12 @@ The accepted presets are exactly `Qwen3.6-35B-A3B` and `Qwen3.6-27B`. Change
 ./scripts/compose.sh up -d --force-recreate vllm
 ```
 
-Open WebUI discovers the replacement through vLLM's `/v1/models` endpoint.
-Compose keeps its environment-provided backend URL, credential, and model
-defaults authoritative, so recreating the services also updates Open WebUI's
-provider configuration. No Open WebUI image rebuild or database rewrite is
-required.
-
-Verify the active API identity directly:
+Select the matching model name in your client. Verify the active API identity:
 
 ```bash
 curl -s -H "Authorization: Bearer $VLLM_API_KEY" \
   http://localhost:8000/v1/models | jq '.data[].id'
 ```
-
-## Web interface integration
-
-Compose preconfigures the vLLM connection, initial model selection, Qwen CPU
-embedding model, Tavily provider, and the `Qwen Sandbox` terminal connection.
-Users still control whether web search, file context, or the terminal is active
-for a particular conversation.
-
-This README does not duplicate the rapidly changing product documentation. For
-feature usage and administration, refer to:
-
-- [Open WebUI documentation](https://docs.openwebui.com/)
-- [Open Terminal documentation](https://docs.openwebui.com/features/open-terminal/)
-- [vLLM documentation](https://docs.vllm.ai/)
-- [Qwen documentation](https://qwen.readthedocs.io/)
-- [Tavily documentation](https://docs.tavily.com/)
-
-The terminal uses one persistent Docker volume shared by approved users. It is
-appropriate for demonstrations with trusted participants, not anonymous public
-access or strong per-user isolation. Its image is based on Open Terminal's slim
-variant and includes Python, Node.js LTS with npm (copied from the official
-Node.js image), Git, curl, and jq. Packages must be added when building the
-image; the running terminal has no `sudo`, runtime system-package
-installation, Docker socket, or Linux-account provisioning.
 
 ## Model and runtime defaults
 
@@ -242,33 +182,27 @@ startup line after changing any of them.
 
 ## Privacy, security, and costs
 
-Prompts and generated text stay on the local vLLM host. Web-search queries and
-the pages selected for retrieval are sent to Tavily and are governed by its
-terms, privacy policy, rate limits, and pricing. Do not search for sensitive
-material unless it is appropriate to send it to that service.
+Inference runs on the local vLLM host. No hosted search provider or chat store
+is bundled; any external client controls its own storage and integrations.
+Model downloads require network access on the host before startup.
 
-Uploaded knowledge files, chats, accounts, and vector data are stored in the
-Open WebUI volume. Terminal files and command history are stored in a separate
-shared volume. Anyone with terminal access can modify or delete files in that
-terminal volume and run arbitrary commands inside the container.
-
-Set all three required secrets before use, never commit `.env`, and do not
-expose ports 3000 or 8000 directly to an untrusted network. vLLM's API key does
+Set `VLLM_API_KEY` before use, never commit `.env`, and do not expose port 8000
+directly to an untrusted network. vLLM's API key does
 not protect every non-OpenAI endpoint, so loopback binding or a firewall remains
 part of the security boundary. This stack does not provide TLS, rate limiting,
-per-user terminal containers, or a hardened public ingress.
+per-user authentication, or a hardened public ingress.
 
 ### Vulnerability scanning
 
 `.github/workflows/public-repo-security.yml` runs the shared Spunky Tensor
 Trivy baseline on pull requests, pushes to `main`, and nightly. It scans the
-Python pins in `docker/*/requirements.txt` and builds and scans all three
-images, failing on any High or Critical finding, including findings that
+Python pins in `docker/vllm/requirements.txt` and builds and scans the vLLM
+image, failing on any High or Critical finding, including findings that
 upstream has not fixed yet. Reports and SBOMs are kept as workflow artifacts.
 
-Base images are pinned by digest and updated by Dependabot. Each build also
+The base image is pinned by digest and updated by Dependabot. Each build also
 applies the distribution's security updates and the Python overrides in
-`docker/*/requirements.txt`; remove an override once the base image ships a
+`docker/vllm/requirements.txt`; remove an override once the base image ships a
 fixed version.
 
 ## Persistent data
@@ -277,52 +211,48 @@ Compose preserves:
 
 - `${HF_CACHE_PATH:-$HOME/.cache/huggingface}` for generation checkpoints
   downloaded and owned by the host user; vLLM mounts it read-only.
-- `${EMBEDDING_CACHE_PATH:-$HOME/.cache/open-webui/embedding}` for the Qwen
-  embedding checkpoint downloaded and owned by the host user; Open WebUI mounts
-  it read-only.
 - `vllm-runtime-cache` for vLLM compilation and autotuning artifacts.
-- `open-webui-data` for users, chats, settings, knowledge, and vectors.
-- `open-webui-static` for Open WebUI's generated branding and manifest assets.
-- `open-terminal-home` for the isolated coding workspace.
 
-Every service runs as a fixed non-root identity, with all Linux capabilities
-dropped, privilege escalation disabled, and a read-only root filesystem. Only
-the named data/cache volumes and ephemeral `/tmp` filesystems are writable.
+vLLM runs as the invoking host UID (use a non-root host account), with all Linux
+capabilities dropped, privilege escalation disabled, and a read-only root
+filesystem. Only the runtime cache volume and ephemeral `/tmp` filesystem are writable.
 The Docker daemon remains the normal system (rootful) daemon; Docker Rootless
 mode is not required or configured by this project.
 
 ### Migrating an existing installation
 
-Back up the Open WebUI and Open Terminal volumes before changing their
-permissions. Stop the old stack, then use a one-time root maintenance container
-to update existing volume ownership to the fixed runtime identities:
+Open WebUI and Open Terminal have been removed due to CVE concerns, along with
+their search and embedding integrations. Updating the Compose file alone does
+not stop existing containers. After updating the checkout, use the same Compose
+project name as the old installation and remove its orphaned containers:
 
 ```bash
-./scripts/compose.sh down
-docker run --rm -u 0 -v vllm-qwen-nvidia_open-webui-data:/data \
-  alpine:3.22 chown -R 10001:10001 /data
-docker run --rm -u 0 -v vllm-qwen-nvidia_open-terminal-home:/data \
-  alpine:3.22 chown -R 1000:1000 /data
+./scripts/compose.sh down --remove-orphans
+./scripts/compose.sh up -d --build --remove-orphans
+./scripts/compose.sh ps
 ```
 
-Compose prefixes volume names with the project name, normally the checkout
-directory name shown above. Confirm the actual names with `docker volume ls`
-before running either command. This is an offline migration exception; no
-normal service startup uses UID 0.
+Only vLLM should remain. This briefly stops vLLM but preserves named volumes;
+do not add `--volumes`. Confirm that no old UI or terminal containers remain
+with `docker ps -a`, including any launched outside this Compose project.
 
-The existing host Hugging Face cache is used directly and does not need to be
-copied or migrated. If it lives somewhere other than
-`$HOME/.cache/huggingface`, set the absolute `HF_CACHE_PATH` in the environment
-before running either helper script. Embedding files previously downloaded into
-`open-webui-data` are not reused because that volume mixes models with mutable
-application data; run `download-model.sh` once to create the dedicated host
-embedding cache. The old `./vllm-cache` is no longer mounted and can be retained
-for rollback; vLLM safely rebuilds those runtime artifacts in
-`vllm-runtime-cache`.
+Remove obsolete `OPEN_WEBUI_*`, `WEBUI_SECRET_KEY`, `OPEN_TERMINAL_*`,
+`TAVILY_API_KEY`, and `EMBEDDING_CACHE_PATH` settings from `.env` and your shell.
+Revoke the unused Tavily credential at the provider. Rotate `VLLM_API_KEY` if
+it was shared with the removed applications, and update your clients.
 
-Back up the Open WebUI volume before changing its pinned version because
-upstream releases may perform database migrations. Removing either named volume
-permanently deletes the corresponding application data.
+The old `open-webui-data`, `open-webui-static`, and `open-terminal-home` volumes
+are no longer mounted. Back up any data you need before explicitly deleting
+them with `docker volume rm`; deletion is permanent. Compose normally prefixes
+these names with the checkout directory name, so identify the actual names
+with `docker volume ls`. Old application images and the host embedding cache
+are also unused and can be removed after confirming they are not needed by
+another installation. No cleanup command here deletes them automatically.
+
+The existing host Hugging Face generation cache and `vllm-runtime-cache` remain
+in use and need no migration. If the host cache lives outside
+`$HOME/.cache/huggingface`, export an absolute `HF_CACHE_PATH` before running
+either helper script.
 
 ## Troubleshooting
 
@@ -330,12 +260,12 @@ Inspect service state and health first:
 
 ```bash
 ./scripts/compose.sh ps
-./scripts/compose.sh logs --tail=200 vllm open-terminal open-webui
+./scripts/compose.sh logs --tail=200 vllm
 ```
 
-If Open WebUI remains in `Created`, vLLM is probably still loading its model or
-has failed its health check. Follow `./scripts/compose.sh logs -f vllm` and look for
-the final API startup message.
+If the API is unavailable, vLLM may still be loading its model or may have
+failed its health check. Follow `./scripts/compose.sh logs -f vllm` and look
+for the final API startup message.
 
 A maximum-sequence-length error means the configured context does not fit the
 available KV cache. The `GPU KV cache size` line is authoritative for that
@@ -346,15 +276,6 @@ docker ps --format '{{.Names}}\t{{.Status}}'
 nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv
 ```
 
-If Tavily searches fail, confirm `TAVILY_API_KEY` is present in `.env` and
-recreate Open WebUI. If the terminal is unavailable, verify that the API key in
-Open WebUI and Open Terminal came from the same `OPEN_TERMINAL_API_KEY` value:
-
-```bash
-./scripts/compose.sh up -d --force-recreate open-terminal open-webui
-./scripts/compose.sh exec open-webui curl -fsS http://open-terminal:8000/health
-```
-
 ## Testing
 
 Test the stack in layers so failures remain easy to locate.
@@ -362,20 +283,21 @@ Test the stack in layers so failures remain easy to locate.
 ### Layer 1 — configuration
 
 ```bash
-bash -n scripts/serve.sh
+for script in scripts/*.sh; do bash -n "$script"; done
+shellcheck --shell=bash scripts/*.sh
 jq empty opencode/opencode.json
 ./scripts/compose.sh config --quiet
+./scripts/compose.sh config --services  # must print only vllm
 git diff --check
 ```
 
 Run the Compose check once with each supported `MODEL_PRESET`.
 
-Builds perform package installation as root, but each final image declares a
-non-root `USER`. Verify both the image metadata and the rendered Compose users:
+The build performs package installation as root, but the final image declares
+a non-root `USER`. Verify the image metadata and rendered Compose user:
 
 ```bash
 docker image inspect qwen3.6-nvfp4-vllm-local:latest \
-  qwen3.6-open-terminal-local:0.14.0 qwen3.6-open-webui-local:v0.12.0 \
   --format '{{.RepoTags}} user={{.Config.User}}'
 ./scripts/compose.sh config | grep -A1 'user:'
 ```
@@ -386,48 +308,48 @@ docker image inspect qwen3.6-nvfp4-vllm-local:latest \
 ./scripts/compose.sh up -d --build
 ./scripts/compose.sh ps
 curl -fsS http://localhost:8000/health
-curl -fsS http://localhost:3000/ready
 curl -s -H "Authorization: Bearer $VLLM_API_KEY" \
   http://localhost:8000/v1/models | jq '.data[].id'
 ```
 
-All three services should become healthy. Open Terminal should have no published
-host port, and `nvidia-smi` should show vLLM but not the Open WebUI embedding
-process.
+vLLM should become healthy and appear in `nvidia-smi`. Compose should publish
+only the configured vLLM port, bound to loopback by default.
 
-Confirm the runtime security boundary for each service:
+Confirm the runtime security boundary:
 
 ```bash
-for service in vllm open-terminal open-webui; do
-  ./scripts/compose.sh exec "$service" sh -c \
-    'test "$(id -u)" -ne 0 && grep -E "^(CapEff|CapPrm):[[:space:]]+0+$|^NoNewPrivs:[[:space:]]+1$" /proc/1/status'
-  ! ./scripts/compose.sh exec "$service" sh -c 'touch /non-root-write-test'
-done
+./scripts/compose.sh exec vllm sh -c \
+  'test "$(id -u)" -ne 0 && grep -E "^(CapEff|CapPrm):[[:space:]]+0+$|^NoNewPrivs:[[:space:]]+1$" /proc/1/status'
+! ./scripts/compose.sh exec vllm sh -c 'touch /non-root-write-test'
 ```
 
 ### Layer 3 — integration smoke tests
 
-Use the Open WebUI interface to confirm one example of each configured path:
+Generate a response using the active model identity:
 
-- Generate a normal Qwen response.
-- Run a Tavily-backed current-information query and inspect its sources.
-- Upload a small document and retrieve a fact that exists only in that file.
-- Activate `Qwen Sandbox`, create a file, and execute short Python, Node.js, and
-  Git commands.
-- Confirm `sudo` is unavailable and writes outside `/home/user` and `/tmp` fail
-  in `Qwen Sandbox`.
+```bash
+model=$(curl -fsS -H "Authorization: Bearer $VLLM_API_KEY" \
+  http://localhost:8000/v1/models | jq -r '.data[0].id')
+jq -n --arg model "$model" \
+  '{model: $model, messages: [{role: "user", content: "Say hello."}], max_tokens: 128}' \
+  | curl -fsS http://localhost:8000/v1/chat/completions \
+      -H "Authorization: Bearer $VLLM_API_KEY" \
+      -H 'Content-Type: application/json' --data-binary @- | jq .
+```
 
-Restart the stack and verify that the conversation, uploaded knowledge, and
-terminal file remain available.
+Confirm an unauthenticated request to `/v1/models` returns HTTP 401. Restart
+vLLM and repeat the authenticated request to verify offline startup and cache
+reuse. Repeat with each supported preset on a compatible GPU host.
 
 ## OpenCode
 
 The standalone [OpenCode configuration](opencode/opencode.json) defines both API
-model names with their measured context limits. It does not depend on `.env` or
-Open WebUI:
+model names with their measured context limits. It is an optional external
+client, not a Compose service, and reads its API key from the shell:
 
 ```bash
 cp opencode/opencode.json /path/to/project/.opencode.json
+export VLLM_API_KEY='<the VLLM_API_KEY from the server .env>'
 opencode --dir /path/to/project
 ```
 
@@ -437,18 +359,11 @@ model currently served by vLLM.
 
 ## Upstream documentation and credits
 
-- [Open WebUI](https://docs.openwebui.com/) provides the authenticated interface,
-  knowledge store, tools, and provider connection.
-- [Open Terminal](https://docs.openwebui.com/features/open-terminal/) provides the
-  isolated coding environment.
 - [vLLM](https://docs.vllm.ai/) provides the OpenAI-compatible inference server.
 - [Qwen](https://qwen.readthedocs.io/) publishes the model family and tooling
   documentation.
 - [Unsloth](https://docs.unsloth.ai/) publishes the NVFP4 checkpoints and related
   deployment guidance.
-- [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
-  provides local multilingual document embeddings.
-- [Tavily](https://docs.tavily.com/) provides hosted web search.
 
 This project is not affiliated with or endorsed by those projects, vendors, or
 model authors.
