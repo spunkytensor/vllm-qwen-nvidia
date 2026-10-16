@@ -16,6 +16,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  hardening:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check shell scripts and runtime policy
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+          shellcheck --shell=bash --exclude=SC2016 scripts/*.sh
+          python3 -m unittest discover -s tests -v
+
   # Inventories the Python packages this repository installs on top of the
   # upstream images (docker/*/requirements.txt).
   source:
@@ -37,10 +49,6 @@ jobs:
         include:
           - image: vllm
             dockerfile: Dockerfile
-          - image: open-webui
-            dockerfile: Dockerfile.open-webui
-          - image: open-terminal
-            dockerfile: Dockerfile.open-terminal
     steps:
       - name: Checkout source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

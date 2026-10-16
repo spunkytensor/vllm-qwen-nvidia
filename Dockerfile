@@ -2,7 +2,7 @@ FROM vllm/vllm-openai:v0.25.1@sha256:e4f88a835143cd22aee2397a26ec6bb80b3a4a6fe0c
 
 # HF_TOKEN is deliberately absent: baking a token into an image layer would expose it
 # via `docker inspect`. It is only needed for gated/private repos (this checkpoint is
-# public); put it in .env, which docker-compose.yml passes through at run time.
+# public); set it in the host shell for downloads, never in the offline service.
 
 # The root filesystem is read-only at run time. Only /home/vllm/.cache/vllm (the
 # vllm-runtime-cache volume) and /tmp are writable, so every path that a library

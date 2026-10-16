@@ -56,9 +56,6 @@ jq empty opencode/opencode.json
 for preset in Qwen3.6-35B-A3B Qwen3.6-27B; do
   MODEL_PRESET="$preset" \
     VLLM_API_KEY=orb-validation-only \
-    WEBUI_SECRET_KEY=orb-validation-only \
-    OPEN_TERMINAL_API_KEY=orb-validation-only \
-    TAVILY_API_KEY=orb-validation-only \
     ./scripts/compose.sh config --quiet
 done
 
