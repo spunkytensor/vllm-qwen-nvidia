@@ -12,12 +12,12 @@ USER root
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 
-# npm 11.21.0 updates bundled dependencies with High advisories (ip-address,
-# tar, brace-expansion). Then apply Debian security updates published after the
-# upstream image was built.
+# npm 11.21.1 updates bundled brace-expansion, undici and http-cache-semantics
+# (CVE-2026-102276, CVE-2026-102278, CVE-2026-19534, CVE-2026-93748).
+# Then apply Debian security updates published after the upstream image was built.
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
-    && npm install --global --no-audit --no-fund npm@11.21.0 \
+    && npm install --global --no-audit --no-fund npm@11.21.1 \
     && rm -rf /root/.npm \
     && node --version && npm --version \
     && apt-get update \
