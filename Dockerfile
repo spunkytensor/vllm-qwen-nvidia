@@ -1,4 +1,4 @@
-FROM vllm/vllm-openai:v0.25.1@sha256:e4f88a835143cd22aee2397a26ec6bb80b3a4a6fe0c882bcbc63822904766089
+FROM vllm/vllm-openai:v0.31.0@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
 
 # HF_TOKEN is deliberately absent: baking a token into an image layer would expose it
 # via `docker inspect`. It is only needed for gated/private repos (this checkpoint is
