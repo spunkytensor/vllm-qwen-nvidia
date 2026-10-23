@@ -1,0 +1,7 @@
+# Security overrides applied on top of the pinned Open Terminal base image.
+# Each pin is the latest patch of the earliest release line that fixes the
+# High/Critical advisories Trivy reports for the upstream package. Drop a pin
+# once the base image ships the same or a newer version. The image build runs
+# `uv pip check`.
+certifi==2026.10.19
+pillow==13.0.0

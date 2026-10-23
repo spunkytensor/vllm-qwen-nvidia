@@ -3,12 +3,15 @@
 # High/Critical advisories Trivy reports for the upstream package. Drop a pin
 # once the base image ships the same or a newer version. The image build runs
 # `pip check`.
+aiohttp==3.14.5
+certifi==2026.10.19
 cryptography==50.0.2
 # datasets 4.x caps fsspec below the fixed release; Open WebUI only imports it
 # for local SpeechT5 text-to-speech, which this stack does not configure.
 datasets==5.0.1
 fsspec==2026.6.0
 mcp==1.28.1
+pillow==13.0.0
 pyarrow==23.0.1
 PyJWT==2.14.0
 pypdf==6.19.0

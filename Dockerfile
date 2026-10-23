@@ -39,9 +39,14 @@ RUN apt-get -o Dir::Etc::SourceParts=- update \
 
 # The base image already fails `uv pip check` (nixl pins an older nixl-cu13), so
 # fail only on dependency conflicts that these installs introduce.
+# LMCache is an optional KV-cache connector that serve.sh never configures. The
+# base image's lmcache 0.5.1 has a Critical RCE (CVE-2026-105192), and the fixed
+# 0.5.6 wheel's CUDA extension does not load against the base image's PyTorch,
+# so remove it rather than ship a broken upgrade.
 COPY docker/vllm/requirements.txt /tmp/vllm-requirements.txt
 RUN (uv pip check --system 2>&1 || true) | grep -F ' requires ' > /tmp/pip-check-base.txt; \
-    uv pip install --system -r /tmp/vllm-requirements.txt \
+    uv pip uninstall --system lmcache \
+    && uv pip install --system -r /tmp/vllm-requirements.txt \
     && (uv pip check --system 2>&1 || true) | grep -F ' requires ' | diff /tmp/pip-check-base.txt - \
     && rm /tmp/vllm-requirements.txt /tmp/pip-check-base.txt
 
